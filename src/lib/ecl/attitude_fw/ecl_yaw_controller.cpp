@@ -58,7 +58,7 @@ ECL_YawController::~ECL_YawController() {
 	perf_free(_nonfinite_input_perf);
 }
 
-float ECL_YawController::control_attitude(float yaccel) {
+float ECL_YawController::control_attitude(float yaccel, float airspeed, float pitch) {
 	/* Do not calculate control signal with bad inputs */
 	if (!(isfinite(yaccel))) {
 		perf_count(_nonfinite_input_perf);
@@ -66,8 +66,9 @@ float ECL_YawController::control_attitude(float yaccel) {
 	}
 	static int counter = 0;
 
-	/* demand yaw rate to cancel lateral acceleration; about 1 rad/sec at .1g */
-	_rate_setpoint = -1 * yaccel;
+	/* demand change in yaw rate to cancel lateral acceleration = V cos(gamma) psiDot
+	 * psiDot += yaccel / (V cos(gamma)) */
+	_rate_setpoint -= (yaccel / (airspeed * cosf(pitch)));
 
 //	if (counter % 5 == 0)
 //		warnx("yaw_control_attitude: yaccel %.4f _rate_setpoint %.4f", (double) yaccel, (double) _rate_setpoint);

@@ -63,7 +63,7 @@ public:
 			float speed_body_u, float speed_body_v, float speed_body_w,
 			float roll_rate_setpoint, float pitch_rate_setpoint);
 
-	float control_attitude(float yaccel);
+	float control_attitude(float yaccel, float airspeed, float pitch);
 
 	float control_bodyrate(	float roll, float pitch,
 			float pitch_rate, float yaw_rate,

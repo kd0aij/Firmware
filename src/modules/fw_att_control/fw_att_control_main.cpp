@@ -919,6 +919,7 @@ FixedwingAttitudeControl::task_main()
 					_yaw_ctrl.reset_integrator();
 				}
 
+#define LATERAL_ACCEL_FEEDBACK
 #ifndef LATERAL_ACCEL_FEEDBACK
 				/* Prepare speed_body_u and speed_body_w */
 				float speed_body_u = 0.0f;
@@ -944,7 +945,7 @@ FixedwingAttitudeControl::task_main()
 							speed_body_u, speed_body_v, speed_body_w,
 							_roll_ctrl.get_desired_rate(), _pitch_ctrl.get_desired_rate()); //runs last, because is depending on output of roll and pitch attitude
 #else
-					_yaw_ctrl.control_attitude(_accel.y);
+					_yaw_ctrl.control_attitude(_accel.y, airspeed, _att.pitch);
 #endif
 
 					/* Run attitude RATE controllers which need the desired attitudes from above, add trim */
