@@ -52,7 +52,7 @@
 #include <stdint.h>
 #include <systemlib/perf_counter.h>
 
-class __EXPORT ECL_YawController //XXX: create controller superclass
+class __attribute__ ((visibility ("default"))) ECL_YawController //XXX: create controller superclass
 {
 public:
 	ECL_YawController();
@@ -63,12 +63,17 @@ public:
 			float speed_body_u, float speed_body_v, float speed_body_w,
 			float roll_rate_setpoint, float pitch_rate_setpoint);
 
+	float control_attitude(float yaccel);
+
 	float control_bodyrate(	float roll, float pitch,
 			float pitch_rate, float yaw_rate,
 			float pitch_rate_setpoint,
 			float airspeed_min, float airspeed_max, float airspeed, float scaler, bool lock_integrator);
 
-	void reset_integrator();
+	float control_bodyrate(float yaw_rate, float airspeed_min, float airspeed_max, float airspeed,
+			float scaler,  bool lock_integrator);
+
+		void reset_integrator();
 
 	void set_k_p(float k_p) {
 			_k_p = k_p;

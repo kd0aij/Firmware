@@ -919,6 +919,7 @@ FixedwingAttitudeControl::task_main()
 					_yaw_ctrl.reset_integrator();
 				}
 
+#ifndef LATERAL_ACCEL_FEEDBACK
 				/* Prepare speed_body_u and speed_body_w */
 				float speed_body_u = 0.0f;
 				float speed_body_v = 0.0f;
@@ -932,14 +933,19 @@ FixedwingAttitudeControl::task_main()
 						warnx("Did not get a valid R\n");
 					}
 				}
+#endif
 
 				/* Run attitude controllers */
 				if (isfinite(roll_sp) && isfinite(pitch_sp)) {
 					_roll_ctrl.control_attitude(roll_sp, _att.roll);
 					_pitch_ctrl.control_attitude(pitch_sp, _att.roll, _att.pitch, airspeed);
+#ifndef LATERAL_ACCEL_FEEDBACK
 					_yaw_ctrl.control_attitude(_att.roll, _att.pitch,
 							speed_body_u, speed_body_v, speed_body_w,
 							_roll_ctrl.get_desired_rate(), _pitch_ctrl.get_desired_rate()); //runs last, because is depending on output of roll and pitch attitude
+#else
+					_yaw_ctrl.control_attitude(_accel.y);
+#endif
 
 					/* Run attitude RATE controllers which need the desired attitudes from above, add trim */
 					float roll_u = _roll_ctrl.control_bodyrate(_att.pitch,
@@ -980,14 +986,22 @@ FixedwingAttitudeControl::task_main()
 						}
 					}
 
+#ifndef LATERAL_ACCEL_FEEDBACK
 					float yaw_u = _yaw_ctrl.control_bodyrate(_att.roll, _att.pitch,
 							_att.pitchspeed, _att.yawspeed,
 							_pitch_ctrl.get_desired_rate(),
 							_parameters.airspeed_min, _parameters.airspeed_max, airspeed, airspeed_scaling, lock_integrator);
+#else
+					float yaw_u = _yaw_ctrl.control_bodyrate(_att.yawspeed,
+							_parameters.airspeed_min, _parameters.airspeed_max, airspeed, airspeed_scaling, lock_integrator);
 					_actuators.control[2] = (isfinite(yaw_u)) ? yaw_u + _parameters.trim_yaw : _parameters.trim_yaw;
-
+#endif
 					/* add in manual rudder control */
 					_actuators.control[2] += yaw_manual;
+
+//					if (loop_counter % 10 == 0)
+//						warnx("yaw_manual: %.4f, yaw_u %.4f", (double)yaw_manual, (double)yaw_u);
+
 					if (!isfinite(yaw_u)) {
 						_yaw_ctrl.reset_integrator();
 						perf_count(_nonfinite_output_perf);

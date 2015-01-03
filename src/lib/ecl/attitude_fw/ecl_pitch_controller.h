@@ -53,7 +53,7 @@
 #include <stdint.h>
 #include <systemlib/perf_counter.h>
 
-class __EXPORT ECL_PitchController //XXX: create controller superclass
+class __attribute__ ((visibility ("default"))) ECL_PitchController //XXX: create controller superclass
 {
 public:
 	ECL_PitchController();
