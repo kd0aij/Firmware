@@ -155,6 +155,8 @@ float ECL_YawController::control_attitude_impl_openloop(const struct ECL_Control
 
 float ECL_YawController::control_bodyrate_impl(const struct ECL_ControlData &ctl_data)
 {
+	static int counter = 0;
+
 	/* Do not calculate control signal with bad inputs */
 	if (!(isfinite(ctl_data.roll) && isfinite(ctl_data.pitch) && isfinite(ctl_data.pitch_rate) &&
 	      isfinite(ctl_data.yaw_rate) && isfinite(ctl_data.pitch_rate_setpoint) &&
@@ -194,8 +196,15 @@ float ECL_YawController::control_bodyrate_impl(const struct ECL_ControlData &ctl
 
 	/* Close the acceleration loop if _coordinated_method wants this: change body_rate setpoint */
 	if (_coordinated_method == COORD_METHOD_CLOSEACC) {
-		//XXX: filtering of acceleration?
-		_bodyrate_setpoint -= (ctl_data.acc_body_y / (airspeed * cosf(ctl_data.pitch)));
+		if (airspeed > ctl_data.airspeed_min) {
+			// convert lateral acceleration to delta rate required to cancel it and sum into bodyrate setpoint
+			_bodyrate_setpoint -= ctl_data.acc_body_y / (airspeed * cosf(ctl_data.pitch));
+			_bodyrate_setpoint = math::constrain(_bodyrate_setpoint, -_max_rate, _max_rate);
+		}
+	} else {
+		/* Transform setpoint to body angular rates (jacobian) */
+		_bodyrate_setpoint = -sinf(ctl_data.roll) * ctl_data.pitch_rate_setpoint
+				+ cosf(ctl_data.roll) * cosf(ctl_data.pitch) * _rate_setpoint;
 	}
 
 	/* Transform estimation to body angular rates (jacobian) */
@@ -232,6 +241,11 @@ float ECL_YawController::control_bodyrate_impl(const struct ECL_ControlData &ctl
 	_last_output = (_bodyrate_setpoint * _k_ff + _rate_error * _k_p + integrator_constrained) * ctl_data.scaler *
 		       ctl_data.scaler;  //scaler is proportional to 1/airspeed
 	//warnx("yaw:_last_output: %.4f, _integrator: %.4f, _integrator_max: %.4f, airspeed %.4f, _k_i %.4f, _k_p: %.4f", (double)_last_output, (double)_integrator, (double)_integrator_max, (double)airspeed, (double)_k_i, (double)_k_p);
+//	if (counter % 5 == 0)
+//		warnx("yaw: _bodyrate_setpoint %.4f _rate_error %.4f _last_output %.4f scaler %.4f",
+//		      (double) _bodyrate_setpoint, (double) _rate_error, (double) _last_output, (double) ctl_data.scaler);
+//
+//	counter++;
 
 
 	return math::constrain(_last_output, -1.0f, 1.0f);
