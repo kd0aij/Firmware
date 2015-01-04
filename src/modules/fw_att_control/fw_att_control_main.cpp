@@ -944,8 +944,6 @@ FixedwingAttitudeControl::task_main()
 					_yaw_ctrl.control_attitude(_att.roll, _att.pitch,
 							speed_body_u, speed_body_v, speed_body_w,
 							_roll_ctrl.get_desired_rate(), _pitch_ctrl.get_desired_rate()); //runs last, because is depending on output of roll and pitch attitude
-#else
-					_yaw_ctrl.control_attitude(_accel.y, airspeed, _att.pitch);
 #endif
 
 					/* Run attitude RATE controllers which need the desired attitudes from above, add trim */
@@ -993,10 +991,10 @@ FixedwingAttitudeControl::task_main()
 							_pitch_ctrl.get_desired_rate(),
 							_parameters.airspeed_min, _parameters.airspeed_max, airspeed, airspeed_scaling, lock_integrator);
 #else
-					float yaw_u = _yaw_ctrl.control_bodyrate(_att.yawspeed,
+					float yaw_u = _yaw_ctrl.control_bodyrate(_accel.y, _att.yawspeed, _att.pitch,
 							_parameters.airspeed_min, _parameters.airspeed_max, airspeed, airspeed_scaling, lock_integrator);
-					_actuators.control[2] = (isfinite(yaw_u)) ? yaw_u + _parameters.trim_yaw : _parameters.trim_yaw;
 #endif
+					_actuators.control[2] = (isfinite(yaw_u)) ? yaw_u + _parameters.trim_yaw : _parameters.trim_yaw;
 					/* add in manual rudder control */
 					_actuators.control[2] += yaw_manual;
 

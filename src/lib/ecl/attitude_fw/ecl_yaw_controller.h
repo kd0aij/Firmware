@@ -70,7 +70,7 @@ public:
 			float pitch_rate_setpoint,
 			float airspeed_min, float airspeed_max, float airspeed, float scaler, bool lock_integrator);
 
-	float control_bodyrate(float yaw_rate, float airspeed_min, float airspeed_max, float airspeed,
+	float control_bodyrate(float yaccel, float yaw_rate, float pitch, float airspeed_min, float airspeed_max, float airspeed,
 			float scaler,  bool lock_integrator);
 
 		void reset_integrator();

@@ -66,8 +66,8 @@ float ECL_YawController::control_attitude(float yaccel, float airspeed, float pi
 	}
 	static int counter = 0;
 
-	/* demand change in yaw rate to cancel lateral acceleration = V cos(gamma) psiDot
-	 * psiDot += yaccel / (V cos(gamma)) */
+	/* demand delta yaw rate to cancel lateral acceleration = V cos(gamma) psiDot
+	 * psiDot -= yaccel / (V cos(gamma)) */
 	_rate_setpoint -= (yaccel / (airspeed * cosf(pitch)));
 
 //	if (counter % 5 == 0)
@@ -144,7 +144,7 @@ float ECL_YawController::control_attitude(float roll, float pitch,
 }
 // markw: it appears that the commanded yaw rate is far too low for the hilstar
 
-float ECL_YawController::control_bodyrate(float yaw_rate, float airspeed_min, float airspeed_max, float airspeed,
+float ECL_YawController::control_bodyrate(float yaccel, float yaw_rate, float pitch, float airspeed_min, float airspeed_max, float airspeed,
 		float scaler,  bool lock_integrator) {
 	static int counter=0;
 	/* Do not calculate control signal with bad inputs */
@@ -163,8 +163,12 @@ float ECL_YawController::control_bodyrate(float yaw_rate, float airspeed_min, fl
 	if (dt_micros > 500000)
 		lock_integrator = true;
 
+	/* demand delta yaw rate to cancel lateral acceleration = V cos(gamma) psiDot
+	 * psiDot -= yaccel / (V cos(gamma)) */
+	_bodyrate_setpoint -= (yaccel / (airspeed * cosf(pitch)));
+
 	/* Calculate body angular rate error */
-	_rate_error = _rate_setpoint - yaw_rate; //body angular rate error
+	_rate_error = _bodyrate_setpoint - yaw_rate; //body angular rate error
 
 	if (!lock_integrator && _k_i > 0.0f && airspeed > 0.5f * airspeed_min) {
 
