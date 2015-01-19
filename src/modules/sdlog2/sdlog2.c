@@ -94,6 +94,7 @@
 #include <uORB/topics/servorail_status.h>
 #include <uORB/topics/wind_estimate.h>
 #include <uORB/topics/encoders.h>
+#include <uORB/topics/vtol_vehicle_status.h>
 
 #include <systemlib/systemlib.h>
 #include <systemlib/param/param.h>
@@ -1000,6 +1001,7 @@ int sdlog2_thread_main(int argc, char *argv[])
 		struct satellite_info_s sat_info;
 		struct wind_estimate_s wind_estimate;
 		struct encoders_s encoders;
+		struct vtol_vehicle_status_s vtol_status;
 	} buf;
 
 	memset(&buf, 0, sizeof(buf));
@@ -1019,6 +1021,7 @@ int sdlog2_thread_main(int argc, char *argv[])
 			struct log_GPS_s log_GPS;
 			struct log_ATTC_s log_ATTC;
 			struct log_STAT_s log_STAT;
+			struct log_VTOL_s log_VTOL;
 			struct log_RC_s log_RC;
 			struct log_OUT0_s log_OUT0;
 			struct log_AIRS_s log_AIRS;
@@ -1053,6 +1056,7 @@ int sdlog2_thread_main(int argc, char *argv[])
 	struct {
 		int cmd_sub;
 		int status_sub;
+		int vtol_status_sub;
 		int sensor_sub;
 		int att_sub;
 		int att_sp_sub;
@@ -1086,6 +1090,7 @@ int sdlog2_thread_main(int argc, char *argv[])
 
 	subs.cmd_sub = orb_subscribe(ORB_ID(vehicle_command));
 	subs.status_sub = orb_subscribe(ORB_ID(vehicle_status));
+	subs.vtol_status_sub = orb_subscribe(ORB_ID(vtol_vehicle_status));
 	subs.gps_pos_sub = orb_subscribe(ORB_ID(vehicle_gps_position));
 	subs.sensor_sub = orb_subscribe(ORB_ID(sensor_combined));
 	subs.att_sub = orb_subscribe(ORB_ID(vehicle_attitude));
@@ -1112,6 +1117,7 @@ int sdlog2_thread_main(int argc, char *argv[])
 	subs.system_power_sub = orb_subscribe(ORB_ID(system_power));
 	subs.servorail_status_sub = orb_subscribe(ORB_ID(servorail_status));
 	subs.wind_sub = orb_subscribe(ORB_ID(wind_estimate));
+	
 	/* we need to rate-limit wind, as we do not need the full update rate */
 	orb_set_interval(subs.wind_sub, 90);
 	subs.encoders_sub = orb_subscribe(ORB_ID(encoders));
@@ -1216,6 +1222,13 @@ int sdlog2_thread_main(int argc, char *argv[])
 			log_msg.body.log_STAT.battery_warning = (uint8_t) buf_status.battery_warning;
 			log_msg.body.log_STAT.landed = (uint8_t) buf_status.condition_landed;
 			LOGBUFFER_WRITE_AND_COUNT(STAT);
+		}
+
+		/* --- VTOL VEHICLE STATUS --- */
+		if(copy_if_updated(ORB_ID(vtol_vehicle_status), subs.vtol_status_sub, &buf.vtol_status)) {
+			log_msg.msg_type = LOG_VTOL_MSG;
+			log_msg.body.log_VTOL.airspeed_tot = buf.vtol_status.airspeed_tot;
+			LOGBUFFER_WRITE_AND_COUNT(VTOL);
 		}
 
 		/* --- GPS POSITION - UNIT #1 --- */
@@ -1514,7 +1527,6 @@ int sdlog2_thread_main(int argc, char *argv[])
 											  (buf.local_pos.v_z_valid ? 8 : 0) |
 											  (buf.local_pos.xy_global ? 16 : 0) |
 											  (buf.local_pos.z_global ? 32 : 0);
-			log_msg.body.log_LPOS.landed = buf.local_pos.landed;
 			log_msg.body.log_LPOS.ground_dist_flags = (buf.local_pos.dist_bottom_valid ? 1 : 0);
 			log_msg.body.log_LPOS.eph = buf.local_pos.eph;
 			log_msg.body.log_LPOS.epv = buf.local_pos.epv;
