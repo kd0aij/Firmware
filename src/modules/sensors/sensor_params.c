@@ -811,8 +811,10 @@ PARAM_DEFINE_INT32(RC_MAP_PARAM3, 0);
 /**
  * Failsafe channel PWM threshold.
  *
- * @min 800
- * @max 2200
+ * Must be less than [failsafe channel]_MIN or greater than [failsafe channel]_MAX
+ *
+ * @min [fs_ch]_MAX
+ * @max [fs_ch]_MIN
  * @group Radio Calibration
  */
 PARAM_DEFINE_INT32(RC_FAILS_THR, 0);

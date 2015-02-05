@@ -600,7 +600,7 @@ void VtolAttitudeControl::set_idle_mc()
 	if (fd < 0) {err(1, "can't open %s", dev);}
 
 	ret = ioctl(fd, PWM_SERVO_GET_COUNT, (unsigned long)&servo_count);
-	unsigned pwm_value = _params.idle_pwm_mc;
+	unsigned pwm_value = 1000; //_params.idle_pwm_mc;
 	struct pwm_output_values pwm_values;
 	memset(&pwm_values, 0, sizeof(pwm_values));
 
