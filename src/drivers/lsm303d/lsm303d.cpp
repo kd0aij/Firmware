@@ -920,7 +920,7 @@ LSM303D::ioctl(struct file *filp, int cmd, unsigned long arg)
 	}
 
 	case ACCELIOCGLOWPASS:
-		return _accel_filter_x.get_cutoff_freq();
+		return static_cast<int>(_accel_filter_x.get_cutoff_freq());
 
 	case ACCELIOCSSCALE: {
 		/* copy scale, but only if off by a few percent */
@@ -1067,7 +1067,10 @@ LSM303D::mag_ioctl(struct file *filp, int cmd, unsigned long arg)
 		return mag_self_test();
 
 	case MAGIOCGEXTERNAL:
-		/* no external mag board yet */
+		/* Even if this sensor is on the "external" SPI bus
+		 * it is still fixed to the autopilot assembly,
+		 * so always return 0.
+		 */
 		return 0;
 
 	default:

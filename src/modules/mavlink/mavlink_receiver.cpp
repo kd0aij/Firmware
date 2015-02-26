@@ -802,6 +802,7 @@ MavlinkReceiver::handle_message_set_attitude_target(mavlink_message_t *msg)
 					mavlink_quaternion_to_dcm(set_attitude_target.q, (float(*)[3])att_sp.R_body);
 					att_sp.R_valid = true;
 					att_sp.thrust = set_attitude_target.thrust;
+					att_sp.yaw_sp_move_rate = 0.0;
 					memcpy(att_sp.q_d, set_attitude_target.q, sizeof(att_sp.q_d));
 					att_sp.q_d_valid = true;
 					if (_att_sp_pub < 0) {
@@ -927,7 +928,7 @@ MavlinkReceiver::handle_message_request_data_stream(mavlink_message_t *msg)
 	mavlink_request_data_stream_t req;
 	mavlink_msg_request_data_stream_decode(msg, &req);
 
-	if (req.target_system == mavlink_system.sysid && req.target_component == mavlink_system.compid) {
+	if (req.target_system == mavlink_system.sysid && req.target_component == mavlink_system.compid && req.req_message_rate != 0) {
 		float rate = req.start_stop ? (1000.0f / req.req_message_rate) : 0.0f;
 
 		MavlinkStream *stream;

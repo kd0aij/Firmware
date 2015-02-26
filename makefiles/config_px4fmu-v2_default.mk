@@ -43,6 +43,7 @@ MODULES		+= drivers/frsky_telemetry
 MODULES		+= modules/sensors
 MODULES		+= drivers/mkblctrl
 MODULES		+= drivers/px4flow
+MODULES		+= drivers/oreoled
 
 #
 # System commands
@@ -122,6 +123,16 @@ MODULES		+= platforms/nuttx
 # OBC challenge
 #
 MODULES		+= modules/bottle_drop
+
+#
+# PX4 flow estimator, good for indoors
+#
+MODULES		+= examples/flow_position_estimator
+
+#
+# Rover apps
+#
+MODULES		+= examples/rover_steering_control
 
 #
 # Demo apps
