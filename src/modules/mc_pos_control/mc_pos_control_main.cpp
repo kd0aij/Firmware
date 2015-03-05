@@ -1370,7 +1370,7 @@ MulticopterPositionControl::task_main()
 				}
 			}
 
-			//Control roll and pitch directly if we no aiding velocity controller is active
+			//Control roll and pitch directly if no aiding velocity controller is active
 			if(!_control_mode.flag_control_velocity_enabled) {
 				_att_sp.roll_body = _manual.y * _params.man_roll_max;
 				_att_sp.pitch_body = -_manual.x * _params.man_pitch_max;
