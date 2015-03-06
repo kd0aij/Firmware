@@ -510,16 +510,20 @@ VtolAttitudeControl::parameters_update()
 }
 
 /**
-* Prepare message to acutators with data from mc attitude controller.
+* Prepare message to actuators with data from mc attitude controller.
 */
 void VtolAttitudeControl::fill_mc_att_control_output()
 {
+	float yaw_control_scale = 1.0f; // yaw scaling, priority is given to pitch control
 	_actuators_out_0.control[0] = _actuators_mc_in.control[0];
 	_actuators_out_0.control[1] = _actuators_mc_in.control[1];
 	_actuators_out_0.control[2] = _actuators_mc_in.control[2];
 	_actuators_out_0.control[3] = _actuators_mc_in.control[3];
-	//set neutral position for elevons
-	_actuators_out_1.control[0] = _actuators_mc_in.control[2];	//roll elevon
+	// give pitch control first priority -> reduce yaw control if necessary
+	if(fabsf(_actuators_mc_in.control[1]) + fabsf(_actuators_mc_in.control[2]) > 1.0f) {
+		yaw_control_scale = 1.0f - fabsf(_actuators_mc_in.control[1]);
+	}
+	_actuators_out_1.control[0] = _actuators_mc_in.control[2]*yaw_control_scale; //roll elevon
 	_actuators_out_1.control[1] = _actuators_mc_in.control[1];;	//pitch elevon
 }
 
