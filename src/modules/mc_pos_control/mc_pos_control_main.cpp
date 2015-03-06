@@ -1357,17 +1357,17 @@ MulticopterPositionControl::task_main()
 			// do not move yaw while arming
 			else if (_manual.z > 0.1f)
 			{
-				const float YAW_OFFSET_MAX = _params.man_yaw_max / _params.mc_att_yaw_p;
+//				const float YAW_OFFSET_MAX = _params.man_yaw_max / _params.mc_att_yaw_p;
 
 				_att_sp.yaw_sp_move_rate = _manual.r * _params.man_yaw_max;
 				_att_sp.yaw_body = _wrap_pi(_att_sp.yaw_body + _att_sp.yaw_sp_move_rate * dt);
-				float yaw_offs = _wrap_pi(_att_sp.yaw_body - _att.yaw);
-				if (yaw_offs < - YAW_OFFSET_MAX) {
-					_att_sp.yaw_body = _wrap_pi(_att.yaw - YAW_OFFSET_MAX);
-
-				} else if (yaw_offs > YAW_OFFSET_MAX) {
-					_att_sp.yaw_body = _wrap_pi(_att.yaw + YAW_OFFSET_MAX);
-				}
+//				float yaw_offs = _wrap_pi(_att_sp.yaw_body - _att.yaw);
+//				if (yaw_offs < - YAW_OFFSET_MAX) {
+//					_att_sp.yaw_body = _wrap_pi(_att.yaw - YAW_OFFSET_MAX);
+//
+//				} else if (yaw_offs > YAW_OFFSET_MAX) {
+//					_att_sp.yaw_body = _wrap_pi(_att.yaw + YAW_OFFSET_MAX);
+//				}
 			}
 
 			//Control roll and pitch directly if no aiding velocity controller is active
