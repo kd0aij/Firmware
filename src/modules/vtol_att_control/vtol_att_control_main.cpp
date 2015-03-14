@@ -712,6 +712,8 @@ void VtolAttitudeControl::task_main()
 	fds[2].fd     = _params_sub;
 	fds[2].events = POLLIN;
 
+	static int dbgCounter = 0;
+
 	while (!_task_should_exit) {
 		/*Advertise/Publish vtol vehicle status*/
 		if (_vtol_vehicle_status_pub > 0) {
@@ -728,6 +730,7 @@ void VtolAttitudeControl::task_main()
 
 		/* timed out - periodic check for _task_should_exit */
 		if (pret == 0) {
+			warnx("timed out");
 			continue;
 		}
 
@@ -763,6 +766,7 @@ void VtolAttitudeControl::task_main()
 		vehicle_battery_poll();
 
 
+//		warnx("aux1: %f", (double)_manual_control_sp.aux1);
 		if (_manual_control_sp.aux1 <= 0.0f) {		/* vehicle is in mc mode */
 			_vtol_vehicle_status.vtol_in_rw_mode = true;
 
@@ -839,6 +843,11 @@ void VtolAttitudeControl::task_main()
 			}
 		}
 
+		dbgCounter++;
+		if (dbgCounter >= 49) {
+			warnx("publishing");
+			dbgCounter = 0;
+		}
 		// publish the attitude rates setpoint
 		if(_v_rates_sp_pub > 0) {
 			orb_publish(ORB_ID(vehicle_rates_setpoint),_v_rates_sp_pub,&_v_rates_sp);
