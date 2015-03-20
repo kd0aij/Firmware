@@ -718,14 +718,24 @@ MulticopterAttitudeControl::task_main()
 	fds[0].fd = _v_att_sub;
 	fds[0].events = POLLIN;
 
+	static int dbgCounter = 0;
+	int pIntvl = 400;
+
 	while (!_task_should_exit) {
 
 		/* wait for up to 100ms for data */
 		int pret = poll(&fds[0], (sizeof(fds) / sizeof(fds[0])), 100);
 
 		/* timed out - periodic check for _task_should_exit */
-		if (pret == 0)
+		dbgCounter++;
+		if (pret == 0) {
+			if (dbgCounter % pIntvl == 0) {
+				warnx("timed out");
+			}
 			continue;
+		}
+//		if (pret == 0)
+//			continue;
 
 		/* this is undesirable but not much we can do - might want to flag unhappy status */
 		if (pret < 0) {
@@ -771,6 +781,9 @@ MulticopterAttitudeControl::task_main()
 				_v_rates_sp.thrust = _thrust_sp;
 				_v_rates_sp.timestamp = hrt_absolute_time();
 
+				if (dbgCounter % pIntvl == 0) {
+					warnx("controlling attitude: publishing _v_rates_sp");
+				}
 				if (_v_rates_sp_pub > 0) {
 					orb_publish(_rates_sp_id, _v_rates_sp_pub, &_v_rates_sp);
 
@@ -792,6 +805,9 @@ MulticopterAttitudeControl::task_main()
 					_v_rates_sp.thrust = _thrust_sp;
 					_v_rates_sp.timestamp = hrt_absolute_time();
 
+					if (dbgCounter % pIntvl == 0) {
+						warnx("manual acro control: publishing _v_rates_sp");
+					}
 					if (_v_rates_sp_pub > 0) {
 						orb_publish(_rates_sp_id, _v_rates_sp_pub, &_v_rates_sp);
 
@@ -809,7 +825,7 @@ MulticopterAttitudeControl::task_main()
 				}
 			}
 
-			if (_v_control_mode.flag_control_rates_enabled) {
+			if (_v_control_mode.flag_control_rates_enabled || _v_control_mode.flag_control_manual_enabled) {
 				control_attitude_rates(dt);
 
 				/* publish actuator controls */
@@ -820,6 +836,9 @@ MulticopterAttitudeControl::task_main()
 				_actuators.timestamp = hrt_absolute_time();
 				_actuators.timestamp_sample = _v_att.timestamp;
 
+				if (dbgCounter % pIntvl == 0) {
+					warnx("publishing _actuators");
+				}
 				if (!_actuators_0_circuit_breaker_enabled) {
 					if (_actuators_0_pub > 0) {
 						orb_publish(_actuators_id, _actuators_0_pub, &_actuators);

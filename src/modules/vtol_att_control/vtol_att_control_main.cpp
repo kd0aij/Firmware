@@ -713,6 +713,7 @@ void VtolAttitudeControl::task_main()
 	fds[2].events = POLLIN;
 
 	static int dbgCounter = 0;
+	int pIntvl = 200;
 
 	while (!_task_should_exit) {
 		/*Advertise/Publish vtol vehicle status*/
@@ -731,7 +732,7 @@ void VtolAttitudeControl::task_main()
 		/* timed out - periodic check for _task_should_exit */
 		dbgCounter++;
 		if (pret == 0) {
-			if (dbgCounter%50 == 0) {
+			if (dbgCounter % pIntvl == 0) {
 				warnx("timed out");
 			}
 			continue;
@@ -846,7 +847,7 @@ void VtolAttitudeControl::task_main()
 			}
 		}
 
-		if (dbgCounter%50 == 0) {
+		if (dbgCounter % pIntvl == 0) {
 			warnx("publishing attitude rates setpoint");
 		}
 		// publish the attitude rates setpoint

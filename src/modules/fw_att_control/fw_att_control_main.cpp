@@ -663,6 +663,9 @@ FixedwingAttitudeControl::task_main()
 
 	_task_running = true;
 
+	static int dbgCounter = 0;
+	int pIntvl = 400;
+
 	while (!_task_should_exit) {
 
 		static int loop_counter = 0;
@@ -671,8 +674,15 @@ FixedwingAttitudeControl::task_main()
 		int pret = poll(&fds[0], (sizeof(fds) / sizeof(fds[0])), 100);
 
 		/* timed out - periodic check for _task_should_exit, etc. */
-		if (pret == 0)
+		dbgCounter++;
+		if (pret == 0) {
+			if (dbgCounter % pIntvl == 0) {
+				warnx("timed out");
+			}
 			continue;
+		}
+//		if (pret == 0)
+//			continue;
 
 		/* this is undesirable but not much we can do - might want to flag unhappy status */
 		if (pret < 0) {
@@ -911,6 +921,9 @@ FixedwingAttitudeControl::task_main()
 					att_sp.yaw_body = 0.0f - _parameters.trim_yaw;
 					att_sp.thrust = throttle_sp;
 
+					if (dbgCounter % pIntvl == 0) {
+						warnx("publishing att_sp");
+					}
 					/* lazily publish the setpoint only once available */
 					if (_attitude_sp_pub > 0 && !_vehicle_status.is_rotary_wing) {
 						/* publish the attitude setpoint */
@@ -1050,6 +1063,9 @@ FixedwingAttitudeControl::task_main()
 
 				_rates_sp.timestamp = hrt_absolute_time();
 
+				if (dbgCounter % pIntvl == 0) {
+					warnx("publishing _rates_sp");
+				}
 				if (_rate_sp_pub > 0) {
 					/* publish the attitude rates setpoint */
 					orb_publish(_rates_sp_id, _rate_sp_pub, &_rates_sp);
