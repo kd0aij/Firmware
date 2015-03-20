@@ -1097,6 +1097,9 @@ FixedwingAttitudeControl::task_main()
 			if(_vcontrol_mode.flag_control_rates_enabled ||
 			   _vcontrol_mode.flag_control_attitude_enabled)
 			{
+				if (dbgCounter % pIntvl == 0) {
+					warnx("publishing _actuators");
+				}
 				/* publish the actuator controls */
 				if (_actuators_0_pub > 0) {
 					orb_publish(_actuators_id, _actuators_0_pub, &_actuators);
