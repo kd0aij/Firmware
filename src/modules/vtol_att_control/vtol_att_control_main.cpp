@@ -729,8 +729,11 @@ void VtolAttitudeControl::task_main()
 
 
 		/* timed out - periodic check for _task_should_exit */
+		dbgCounter++;
 		if (pret == 0) {
-			warnx("timed out");
+			if (dbgCounter%50 == 0) {
+				warnx("timed out");
+			}
 			continue;
 		}
 
@@ -843,10 +846,8 @@ void VtolAttitudeControl::task_main()
 			}
 		}
 
-		dbgCounter++;
-		if (dbgCounter >= 49) {
-			warnx("publishing");
-			dbgCounter = 0;
+		if (dbgCounter%50 == 0) {
+			warnx("publishing attitude rates setpoint");
 		}
 		// publish the attitude rates setpoint
 		if(_v_rates_sp_pub > 0) {
