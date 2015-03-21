@@ -72,16 +72,16 @@ static const int ERROR = -1;
 
 bool is_multirotor(const struct vehicle_status_s *current_status)
 {
-	return ((current_status->system_type == VEHICLE_TYPE_QUADROTOR) ||
-		(current_status->system_type == VEHICLE_TYPE_HEXAROTOR) ||
-		(current_status->system_type == VEHICLE_TYPE_OCTOROTOR) ||
-		(current_status->system_type == VEHICLE_TYPE_TRICOPTER));
+	return ((current_status->system_type == vehicle_status_s::VEHICLE_TYPE_QUADROTOR) ||
+		(current_status->system_type == vehicle_status_s::VEHICLE_TYPE_HEXAROTOR) ||
+		(current_status->system_type == vehicle_status_s::VEHICLE_TYPE_OCTOROTOR) ||
+		(current_status->system_type == vehicle_status_s::VEHICLE_TYPE_TRICOPTER));
 }
 
 bool is_rotary_wing(const struct vehicle_status_s *current_status)
 {
-	return is_multirotor(current_status) || (current_status->system_type == VEHICLE_TYPE_HELICOPTER)
-	       || (current_status->system_type == VEHICLE_TYPE_COAXIAL);
+	return is_multirotor(current_status) || (current_status->system_type == vehicle_status_s::VEHICLE_TYPE_HELICOPTER)
+	       || (current_status->system_type == vehicle_status_s::VEHICLE_TYPE_COAXIAL);
 }
 
 static int buzzer = -1;
@@ -100,7 +100,7 @@ int buzzer_init()
 	tune_durations[TONE_NOTIFY_NEUTRAL_TUNE] = 500000;
 	tune_durations[TONE_ARMING_WARNING_TUNE] = 3000000;
 
-	buzzer = open(TONEALARM_DEVICE_PATH, O_WRONLY);
+	buzzer = open(TONEALARM0_DEVICE_PATH, O_WRONLY);
 
 	if (buzzer < 0) {
 		warnx("Buzzer: open fail\n");
@@ -113,6 +113,11 @@ int buzzer_init()
 void buzzer_deinit()
 {
 	close(buzzer);
+}
+
+void set_tune_override(int tune)
+{
+	ioctl(buzzer, TONE_SET_ALARM, tune);
 }
 
 void set_tune(int tune)
@@ -201,7 +206,7 @@ int led_init()
 	blink_msg_end = 0;
 
 	/* first open normal LEDs */
-	leds = open(LED_DEVICE_PATH, 0);
+	leds = open(LED0_DEVICE_PATH, 0);
 
 	if (leds < 0) {
 		warnx("LED: open fail\n");
@@ -224,10 +229,10 @@ int led_init()
 	led_off(LED_AMBER);
 
 	/* then try RGB LEDs, this can fail on FMUv1*/
-	rgbleds = open(RGBLED_DEVICE_PATH, 0);
+	rgbleds = open(RGBLED0_DEVICE_PATH, 0);
 
-	if (rgbleds == -1) {
-		warnx("No RGB LED found at " RGBLED_DEVICE_PATH);
+	if (rgbleds < 0) {
+		warnx("No RGB LED found at " RGBLED0_DEVICE_PATH);
 	}
 
 	return 0;
@@ -235,50 +240,64 @@ int led_init()
 
 void led_deinit()
 {
-	close(leds);
+	if (leds >= 0) {
+		close(leds);
+	}
 
-	if (rgbleds != -1) {
+	if (rgbleds >= 0) {
 		close(rgbleds);
 	}
 }
 
 int led_toggle(int led)
 {
+	if (leds < 0) {
+		return leds;
+	}
 	return ioctl(leds, LED_TOGGLE, led);
 }
 
 int led_on(int led)
 {
+	if (leds < 0) {
+		return leds;
+	}
 	return ioctl(leds, LED_ON, led);
 }
 
 int led_off(int led)
 {
+	if (leds < 0) {
+		return leds;
+	}
 	return ioctl(leds, LED_OFF, led);
 }
 
 void rgbled_set_color(rgbled_color_t color)
 {
 
-	if (rgbleds != -1) {
-		ioctl(rgbleds, RGBLED_SET_COLOR, (unsigned long)color);
+	if (rgbleds < 0) {
+		return;
 	}
+	ioctl(rgbleds, RGBLED_SET_COLOR, (unsigned long)color);
 }
 
 void rgbled_set_mode(rgbled_mode_t mode)
 {
 
-	if (rgbleds != -1) {
-		ioctl(rgbleds, RGBLED_SET_MODE, (unsigned long)mode);
+	if (rgbleds < 0) {
+		return;
 	}
+	ioctl(rgbleds, RGBLED_SET_MODE, (unsigned long)mode);
 }
 
 void rgbled_set_pattern(rgbled_pattern_t *pattern)
 {
 
-	if (rgbleds != -1) {
-		ioctl(rgbleds, RGBLED_SET_PATTERN, (unsigned long)pattern);
+	if (rgbleds < 0) {
+		return;
 	}
+	ioctl(rgbleds, RGBLED_SET_PATTERN, (unsigned long)pattern);
 }
 
 float battery_remaining_estimate_voltage(float voltage, float discharged, float throttle_normalized)

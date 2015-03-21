@@ -70,6 +70,10 @@
 #include <uORB/topics/vehicle_attitude_setpoint.h>
 #include <uORB/topics/vehicle_rates_setpoint.h>
 #include <uORB/topics/actuator_outputs.h>
+#include <uORB/topics/actuator_controls_0.h>
+#include <uORB/topics/actuator_controls_1.h>
+#include <uORB/topics/actuator_controls_2.h>
+#include <uORB/topics/actuator_controls_3.h>
 #include <uORB/topics/actuator_controls.h>
 #include <uORB/topics/vehicle_command.h>
 #include <uORB/topics/vehicle_local_position.h>
@@ -369,10 +373,7 @@ int create_log_dir()
 		strftime(log_dir + n, sizeof(log_dir) - n, "%Y-%m-%d", &tt);
 		mkdir_ret = mkdir(log_dir, S_IRWXU | S_IRWXG | S_IRWXO);
 
-		if (mkdir_ret == OK) {
-			warnx("log dir created: %s", log_dir);
-
-		} else if (errno != EEXIST) {
+		if ((mkdir_ret != OK) && (errno != EEXIST)) {
 			warn("failed creating new dir: %s", log_dir);
 			return -1;
 		}
@@ -1096,7 +1097,7 @@ int sdlog2_thread_main(int argc, char *argv[])
 	subs.att_sub = orb_subscribe(ORB_ID(vehicle_attitude));
 	subs.att_sp_sub = orb_subscribe(ORB_ID(vehicle_attitude_setpoint));
 	subs.rates_sp_sub = orb_subscribe(ORB_ID(vehicle_rates_setpoint));
-	subs.act_outputs_sub = orb_subscribe(ORB_ID_VEHICLE_CONTROLS);
+	subs.act_outputs_sub = orb_subscribe(ORB_ID(actuator_outputs));
 	subs.act_controls_sub = orb_subscribe(ORB_ID_VEHICLE_ATTITUDE_CONTROLS);
 	subs.act_controls_1_sub = orb_subscribe(ORB_ID(actuator_controls_1));
 	subs.local_pos_sub = orb_subscribe(ORB_ID(vehicle_local_position));
@@ -1117,7 +1118,7 @@ int sdlog2_thread_main(int argc, char *argv[])
 	subs.system_power_sub = orb_subscribe(ORB_ID(system_power));
 	subs.servorail_status_sub = orb_subscribe(ORB_ID(servorail_status));
 	subs.wind_sub = orb_subscribe(ORB_ID(wind_estimate));
-	
+
 	/* we need to rate-limit wind, as we do not need the full update rate */
 	orb_set_interval(subs.wind_sub, 90);
 	subs.encoders_sub = orb_subscribe(ORB_ID(encoders));
@@ -1215,12 +1216,13 @@ int sdlog2_thread_main(int argc, char *argv[])
 		/* --- VEHICLE STATUS --- */
 		if (status_updated) {
 			log_msg.msg_type = LOG_STAT_MSG;
-			log_msg.body.log_STAT.main_state = (uint8_t) buf_status.main_state;
-			log_msg.body.log_STAT.arming_state = (uint8_t) buf_status.arming_state;
-			log_msg.body.log_STAT.failsafe_state = (uint8_t) buf_status.failsafe;
+			log_msg.body.log_STAT.main_state = buf_status.main_state;
+			log_msg.body.log_STAT.arming_state = buf_status.arming_state;
+			log_msg.body.log_STAT.failsafe = (uint8_t) buf_status.failsafe;
 			log_msg.body.log_STAT.battery_remaining = buf_status.battery_remaining;
-			log_msg.body.log_STAT.battery_warning = (uint8_t) buf_status.battery_warning;
+			log_msg.body.log_STAT.battery_warning = buf_status.battery_warning;
 			log_msg.body.log_STAT.landed = (uint8_t) buf_status.condition_landed;
+			log_msg.body.log_STAT.load = buf_status.load;
 			LOGBUFFER_WRITE_AND_COUNT(STAT);
 		}
 
@@ -1437,6 +1439,10 @@ int sdlog2_thread_main(int argc, char *argv[])
 		/* --- ATTITUDE --- */
 		if (copy_if_updated(ORB_ID(vehicle_attitude), subs.att_sub, &buf.att)) {
 			log_msg.msg_type = LOG_ATT_MSG;
+			log_msg.body.log_ATT.q_w = buf.att.q[0];
+			log_msg.body.log_ATT.q_x = buf.att.q[1];
+			log_msg.body.log_ATT.q_y = buf.att.q[2];
+			log_msg.body.log_ATT.q_z = buf.att.q[3];
 			log_msg.body.log_ATT.roll = buf.att.roll;
 			log_msg.body.log_ATT.pitch = buf.att.pitch;
 			log_msg.body.log_ATT.yaw = buf.att.yaw;
@@ -1446,18 +1452,6 @@ int sdlog2_thread_main(int argc, char *argv[])
 			log_msg.body.log_ATT.gx = buf.att.g_comp[0];
 			log_msg.body.log_ATT.gy = buf.att.g_comp[1];
 			log_msg.body.log_ATT.gz = buf.att.g_comp[2];
-			LOGBUFFER_WRITE_AND_COUNT(ATT);
-			// secondary attitude
-			log_msg.msg_type = LOG_ATT2_MSG;
-			log_msg.body.log_ATT.roll = buf.att.roll_sec;
-			log_msg.body.log_ATT.pitch = buf.att.pitch_sec;
-			log_msg.body.log_ATT.yaw = buf.att.yaw_sec;
-			log_msg.body.log_ATT.roll_rate = buf.att.rollspeed_sec;
-			log_msg.body.log_ATT.pitch_rate = buf.att.pitchspeed_sec;
-			log_msg.body.log_ATT.yaw_rate = buf.att.yawspeed_sec;
-			log_msg.body.log_ATT.gx = buf.att.g_comp_sec[0];
-			log_msg.body.log_ATT.gy = buf.att.g_comp_sec[1];
-			log_msg.body.log_ATT.gz = buf.att.g_comp_sec[2];
 			LOGBUFFER_WRITE_AND_COUNT(ATT);
 		}
 
@@ -1481,7 +1475,7 @@ int sdlog2_thread_main(int argc, char *argv[])
 		}
 
 		/* --- ACTUATOR OUTPUTS --- */
-		if (copy_if_updated(ORB_ID(actuator_outputs_0), subs.act_outputs_sub, &buf.act_outputs)) {
+		if (copy_if_updated(ORB_ID(actuator_outputs), subs.act_outputs_sub, &buf.act_outputs)) {
 			log_msg.msg_type = LOG_OUT0_MSG;
 			memcpy(log_msg.body.log_OUT0.output, buf.act_outputs.output, sizeof(log_msg.body.log_OUT0.output));
 			LOGBUFFER_WRITE_AND_COUNT(OUT0);
@@ -1540,6 +1534,12 @@ int sdlog2_thread_main(int argc, char *argv[])
 			log_msg.body.log_LPSP.y = buf.local_pos_sp.y;
 			log_msg.body.log_LPSP.z = buf.local_pos_sp.z;
 			log_msg.body.log_LPSP.yaw = buf.local_pos_sp.yaw;
+			log_msg.body.log_LPSP.vx = buf.local_pos_sp.vx;
+			log_msg.body.log_LPSP.vy = buf.local_pos_sp.vy;
+			log_msg.body.log_LPSP.vz = buf.local_pos_sp.vz;
+			log_msg.body.log_LPSP.acc_x = buf.local_pos_sp.acc_x;
+			log_msg.body.log_LPSP.acc_y = buf.local_pos_sp.acc_y;
+			log_msg.body.log_LPSP.acc_z = buf.local_pos_sp.acc_z;
 			LOGBUFFER_WRITE_AND_COUNT(LPSP);
 		}
 

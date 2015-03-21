@@ -228,7 +228,6 @@ float ECL_YawController::control_bodyrate_impl(const struct ECL_ControlData &ctl
 				/* only allow motion to center: decrease value */
 				id = math::min(id, 0.0f);
 			}
-
 			_integrator += id;
 		}
 
