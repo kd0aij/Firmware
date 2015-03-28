@@ -308,7 +308,7 @@ MulticopterAttitudeControl::MulticopterAttitudeControl() :
 	_actuators_0_circuit_breaker_enabled(false),
 
 /* performance counters */
-	_loop_perf(perf_alloc(PC_ELAPSED, "mc_att_control")),
+	_loop_perf(perf_alloc(PC_INTERVAL, "mc_att_control")),
 	_controller_latency_perf(perf_alloc_once(PC_ELAPSED, "ctrl_latency"))
 
 {
@@ -759,6 +759,9 @@ MulticopterAttitudeControl::task_main()
 			static uint64_t last_run = 0;
 			float dt = (hrt_absolute_time() - last_run) / 1000000.0f;
 			last_run = hrt_absolute_time();
+
+			/* keep track of run intervals */
+			perf_count(_loop_perf);
 
 			/* guard against too small (< 2ms) and too large (> 20ms) dt's */
 			if (dt < 0.002f) {
