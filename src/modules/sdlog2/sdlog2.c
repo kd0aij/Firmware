@@ -1362,6 +1362,7 @@ int sdlog2_thread_main(int argc, char *argv[])
 
 			if (write_IMU) {
 				log_msg.msg_type = LOG_IMU_MSG;
+				log_msg.body.log_IMU.t = buf.sensor.timestamp;
 				log_msg.body.log_IMU.gyro_x = buf.sensor.gyro_rad_s[0];
 				log_msg.body.log_IMU.gyro_y = buf.sensor.gyro_rad_s[1];
 				log_msg.body.log_IMU.gyro_z = buf.sensor.gyro_rad_s[2];
@@ -1472,6 +1473,7 @@ int sdlog2_thread_main(int argc, char *argv[])
 		/* --- ATTITUDE --- */
 		if (copy_if_updated(ORB_ID(vehicle_attitude), subs.att_sub, &buf.att)) {
 			log_msg.msg_type = LOG_ATT_MSG;
+			log_msg.body.log_ATT.t = buf.att.timestamp;
 			log_msg.body.log_ATT.q_w = buf.att.q[0];
 			log_msg.body.log_ATT.q_x = buf.att.q[1];
 			log_msg.body.log_ATT.q_y = buf.att.q[2];
@@ -1491,6 +1493,7 @@ int sdlog2_thread_main(int argc, char *argv[])
 		/* --- ATTITUDE SETPOINT --- */
 		if (copy_if_updated(ORB_ID(vehicle_attitude_setpoint), subs.att_sp_sub, &buf.att_sp)) {
 			log_msg.msg_type = LOG_ATSP_MSG;
+			log_msg.body.log_ATSP.t = buf.att_sp.timestamp;
 			log_msg.body.log_ATSP.roll_sp = buf.att_sp.roll_body;
 			log_msg.body.log_ATSP.pitch_sp = buf.att_sp.pitch_body;
 			log_msg.body.log_ATSP.yaw_sp = buf.att_sp.yaw_body;
@@ -1505,6 +1508,7 @@ int sdlog2_thread_main(int argc, char *argv[])
 		/* --- RATES SETPOINT --- */
 		if (copy_if_updated(ORB_ID(vehicle_rates_setpoint), subs.rates_sp_sub, &buf.rates_sp)) {
 			log_msg.msg_type = LOG_ARSP_MSG;
+			log_msg.body.log_ARSP.t = buf.rates_sp.timestamp;
 			log_msg.body.log_ARSP.roll_rate_sp = buf.rates_sp.roll;
 			log_msg.body.log_ARSP.pitch_rate_sp = buf.rates_sp.pitch;
 			log_msg.body.log_ARSP.yaw_rate_sp = buf.rates_sp.yaw;
@@ -1521,6 +1525,7 @@ int sdlog2_thread_main(int argc, char *argv[])
 		/* --- ACTUATOR CONTROL --- */
 		if (copy_if_updated(ORB_ID_VEHICLE_ATTITUDE_CONTROLS, subs.act_controls_sub, &buf.act_controls)) {
 			log_msg.msg_type = LOG_ATTC_MSG;
+			log_msg.body.log_ATTC.t = buf.act_controls.timestamp;
 			log_msg.body.log_ATTC.roll = buf.act_controls.control[0];
 			log_msg.body.log_ATTC.pitch = buf.act_controls.control[1];
 			log_msg.body.log_ATTC.yaw = buf.act_controls.control[2];
