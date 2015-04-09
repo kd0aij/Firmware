@@ -1291,6 +1291,24 @@ PX4IO::io_set_rc_config()
 		input_map[ichan - 1] = 4;
 	}
 
+	/* AUX 1*/
+	param_get(param_find("RC_MAP_AUX1"), &ichan);
+	if ((ichan > 0) && (ichan <= (int)_max_rc_input)) {
+		input_map[ichan - 1] = 5;
+	}
+
+	/* AUX 2*/
+	param_get(param_find("RC_MAP_AUX2"), &ichan);
+	if ((ichan > 0) && (ichan <= (int)_max_rc_input)) {
+		input_map[ichan - 1] = 6;
+	}
+
+	/* AUX 3*/
+	param_get(param_find("RC_MAP_AUX3"), &ichan);
+	if ((ichan > 0) && (ichan <= (int)_max_rc_input)) {
+		input_map[ichan - 1] = 7;
+	}
+
 	/* MAIN MODE SWITCH */
 	param_get(param_find("RC_MAP_MODE_SW"), &ichan);
 	if ((ichan > 0) && (ichan <= (int)_max_rc_input)) {
@@ -1675,14 +1693,20 @@ PX4IO::io_publish_pwm_outputs()
 	uint16_t ctl[_max_actuators];
 	int ret = io_reg_get(PX4IO_PAGE_SERVOS, 0, ctl, _max_actuators);
 
-	if (ret != OK)
+	if (ret != OK){
 		return ret;
+	}
+
+	unsigned maxouts = sizeof(outputs.output) / sizeof(outputs.output[0]);
+	unsigned actuator_max = (_max_actuators > maxouts) ? maxouts : _max_actuators;
+
 
 	/* convert from register format to float */
-	for (unsigned i = 0; i < _max_actuators; i++)
+	for (unsigned i = 0; i < actuator_max; i++){
 		outputs.output[i] = ctl[i];
+	}
 
-	outputs.noutputs = _max_actuators;
+	outputs.noutputs = actuator_max;
 
 	/* lazily advertise on first publication */
 	if (_to_outputs == 0) {
@@ -1998,13 +2022,13 @@ PX4IO::print_status(bool extended_status)
 		printf("vrssi %u\n", io_reg_get(PX4IO_PAGE_STATUS, PX4IO_P_STATUS_VRSSI));
 	}
 
-	printf("actuators");
+	printf("actuators (including S.BUS)");
 
 	for (unsigned i = 0; i < _max_actuators; i++)
 		printf(" %hi", int16_t(io_reg_get(PX4IO_PAGE_ACTUATORS, i)));
 
 	printf("\n");
-	printf("servos");
+	printf("hardware servo ports");
 
 	for (unsigned i = 0; i < _max_actuators; i++)
 		printf(" %u", io_reg_get(PX4IO_PAGE_SERVOS, i));

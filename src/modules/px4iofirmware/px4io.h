@@ -51,7 +51,8 @@
 /*
  * Constants and limits.
  */
-#define PX4IO_SERVO_COUNT		8
+#define PX4IO_SERVO_COUNT		16
+#define PX4IO_SERVO_HARDWARE_COUNT	8
 #define PX4IO_CONTROL_CHANNELS		8
 #define PX4IO_CONTROL_GROUPS		4
 #define PX4IO_RC_INPUT_CHANNELS		18
@@ -219,7 +220,8 @@ extern int	dsm_init(const char *device);
 extern bool	dsm_input(uint16_t *values, uint16_t *num_values, uint8_t *n_bytes, uint8_t **bytes);
 extern void	dsm_bind(uint16_t cmd, int pulses);
 extern int	sbus_init(const char *device);
-extern bool	sbus_input(uint16_t *values, uint16_t *num_values, bool *sbus_failsafe, bool *sbus_frame_drop, uint16_t max_channels);
+extern bool	sbus_input(uint16_t *values, uint16_t *num_values, bool *sbus_failsafe, bool *sbus_frame_drop,
+			   uint16_t max_channels);
 extern void	sbus1_output(uint16_t *values, uint16_t num_values);
 extern void	sbus2_output(uint16_t *values, uint16_t num_values);
 
