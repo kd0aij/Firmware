@@ -93,7 +93,7 @@ static bool magnometerCheck(int mavlink_fd, unsigned instance, bool optional)
 
 	if (devid != calibration_devid) {
 		mavlink_and_console_log_critical(mavlink_fd,
-						 "PREFLIGHT FAIL: MAG #%u UNCALIBRATED (NO ID)", instance);
+						 "PREFLIGHT FAIL: MAG #%u UNCALIBRATED", instance);
 		success = false;
 		goto out;
 	}
@@ -137,7 +137,7 @@ static bool accelerometerCheck(int mavlink_fd, unsigned instance, bool optional,
 
 	if (devid != calibration_devid) {
 		mavlink_and_console_log_critical(mavlink_fd,
-						 "PREFLIGHT FAIL: ACCEL #%u UNCALIBRATED (NO ID)", instance);
+						 "PREFLIGHT FAIL: ACCEL #%u UNCALIBRATED", instance);
 		success = false;
 		goto out;
 	}
@@ -161,7 +161,7 @@ static bool accelerometerCheck(int mavlink_fd, unsigned instance, bool optional,
 			float accel_magnitude = sqrtf(acc.x * acc.x + acc.y * acc.y + acc.z * acc.z);
 
 			if (accel_magnitude < 4.0f || accel_magnitude > 15.0f /* m/s^2 */) {
-				mavlink_and_console_log_critical(mavlink_fd, "PREFLIGHT FAIL: ACCEL RANGE, hold still");
+				mavlink_and_console_log_critical(mavlink_fd, "PREFLIGHT FAIL: ACCEL RANGE, hold still on arming");
 				/* this is frickin' fatal */
 				success = false;
 				goto out;
@@ -204,7 +204,7 @@ static bool gyroCheck(int mavlink_fd, unsigned instance, bool optional)
 
 	if (devid != calibration_devid) {
 		mavlink_and_console_log_critical(mavlink_fd,
-						 "PREFLIGHT FAIL: GYRO #%u UNCALIBRATED (NO ID)", instance);
+						 "PREFLIGHT FAIL: GYRO #%u UNCALIBRATED", instance);
 		success = false;
 		goto out;
 	}
@@ -254,13 +254,13 @@ static bool airspeedCheck(int mavlink_fd, bool optional)
 
 	if ((ret = orb_copy(ORB_ID(airspeed), fd, &airspeed)) ||
 	    (hrt_elapsed_time(&airspeed.timestamp) > (500 * 1000))) {
-		mavlink_log_critical(mavlink_fd, "PREFLIGHT FAIL: AIRSPEED SENSOR MISSING");
+		mavlink_and_console_log_critical(mavlink_fd, "PREFLIGHT FAIL: AIRSPEED SENSOR MISSING");
 		success = false;
 		goto out;
 	}
 
 	if (fabsf(airspeed.indicated_airspeed_m_s > 6.0f)) {
-		mavlink_log_critical(mavlink_fd, "AIRSPEED WARNING: WIND OR CALIBRATION ISSUE");
+		mavlink_and_console_log_critical(mavlink_fd, "AIRSPEED WARNING: WIND OR CALIBRATION ISSUE");
 		// XXX do not make this fatal yet
 	}
 
