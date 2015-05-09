@@ -818,6 +818,9 @@ private:
 	MavlinkOrbSubscription *_pos_sub;
 	uint64_t _pos_time;
 
+	MavlinkOrbSubscription *_home_sub;
+	uint64_t _home_time;
+
 	MavlinkOrbSubscription *_armed_sub;
 	uint64_t _armed_time;
 
@@ -837,6 +840,8 @@ protected:
 		_att_time(0),
 		_pos_sub(_mavlink->add_orb_subscription(ORB_ID(vehicle_global_position))),
 		_pos_time(0),
+		_home_sub(_mavlink->add_orb_subscription(ORB_ID(home_position))),
+		_home_time(0),
 		_armed_sub(_mavlink->add_orb_subscription(ORB_ID(actuator_armed))),
 		_armed_time(0),
 		_act_sub(_mavlink->add_orb_subscription(ORB_ID(actuator_controls_0))),
@@ -852,12 +857,14 @@ protected:
 		struct actuator_armed_s armed;
 		struct actuator_controls_s act;
 		struct airspeed_s airspeed;
+		struct home_position_s home;
 
 		bool updated = _att_sub->update(&_att_time, &att);
 		updated |= _pos_sub->update(&_pos_time, &pos);
 		updated |= _armed_sub->update(&_armed_time, &armed);
 		updated |= _act_sub->update(&_act_time, &act);
 		updated |= _airspeed_sub->update(&_airspeed_time, &airspeed);
+		updated |= _home_sub->update(&_home_time, &home);
 
 		if (updated) {
 			mavlink_vfr_hud_t msg;
@@ -866,7 +873,11 @@ protected:
 			msg.groundspeed = sqrtf(pos.vel_n * pos.vel_n + pos.vel_e * pos.vel_e);
 			msg.heading = _wrap_2pi(att.yaw) * M_RAD_TO_DEG_F;
 			msg.throttle = armed.armed ? act.control[3] * 100.0f : 0.0f;
-			msg.alt = pos.alt;
+			// DroidPlanner expects AGL here
+			//			msg.alt = pos.alt;
+			msg.alt = pos.alt - home.alt;
+//			warnx("vfr_hud: pos.alt %f, home.alt: %f, msg.alt: %f\n",
+//					(double)pos.alt, (double)home.alt, (double)msg.alt);
 			msg.climb = -pos.vel_d;
 
 			_mavlink->send_message(MAVLINK_MSG_ID_VFR_HUD, &msg);
