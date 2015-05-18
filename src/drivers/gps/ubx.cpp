@@ -821,6 +821,8 @@ UBX::payload_rx_done(void)
 
 		_gps_position->timestamp_variance = hrt_absolute_time();
 
+		warnx("gps fix type: %d", _gps_position->fix_type);
+
 		ret = 1;
 		break;
 
@@ -838,6 +840,7 @@ UBX::payload_rx_done(void)
 			timeinfo.tm_min		= _buf.payload_rx_nav_timeutc.min;
 			timeinfo.tm_sec		= _buf.payload_rx_nav_timeutc.sec;
 			time_t epoch = mktime(&timeinfo);
+			warnx("gps utc time: hour: %d, minute: %d, second: %d", timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec);
 
 			// only set the time if it makes sense
 
@@ -849,6 +852,7 @@ UBX::payload_rx_done(void)
 				timespec ts;
 				ts.tv_sec = epoch;
 				ts.tv_nsec = _buf.payload_rx_nav_timeutc.nano;
+				warnx("setting RTC");
 				if (clock_settime(CLOCK_REALTIME, &ts)) {
 					warn("failed setting clock");
 				}

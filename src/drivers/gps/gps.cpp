@@ -367,6 +367,7 @@ GPS::task_main()
 
 							if (_report_gps_pos_pub > 0) {
 								orb_publish(ORB_ID(vehicle_gps_position), _report_gps_pos_pub, &_report_gps_pos);
+//								warnx("gps utc time: %lld", _report_gps_pos.time_utc_usec);
 
 							} else {
 								_report_gps_pos_pub = orb_advertise(ORB_ID(vehicle_gps_position), &_report_gps_pos);
