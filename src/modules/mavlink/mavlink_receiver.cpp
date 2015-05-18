@@ -1386,7 +1386,7 @@ MavlinkReceiver::handle_message_hil_state_quaternion(mavlink_message_t *msg)
 		if (!_hil_local_proj_inited) {
 			_hil_local_proj_inited = true;
 			_hil_local_alt0 = hil_state.alt / 1000.0f;
-			map_projection_init(&_hil_local_proj_ref, hil_state.lat, hil_state.lon);
+			map_projection_init(&_hil_local_proj_ref, lat, lon);
 			hil_local_pos.ref_timestamp = timestamp;
 			hil_local_pos.ref_lat = lat;
 			hil_local_pos.ref_lon = lon;
@@ -1581,7 +1581,7 @@ MavlinkReceiver::receive_start(Mavlink *parent)
 	param.sched_priority = SCHED_PRIORITY_MAX - 80;
 	(void)pthread_attr_setschedparam(&receiveloop_attr, &param);
 
-	pthread_attr_setstacksize(&receiveloop_attr, 1800);
+	pthread_attr_setstacksize(&receiveloop_attr, 2100);
 	pthread_t thread;
 	pthread_create(&thread, &receiveloop_attr, MavlinkReceiver::start_helper, (void *)parent);
 
