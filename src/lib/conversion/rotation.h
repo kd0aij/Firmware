@@ -75,8 +75,8 @@ enum Rotation {
 	ROTATION_PITCH_90            = 24,
 	ROTATION_PITCH_270           = 25,
 	ROTATION_ROLL_270_YAW_270    = 26,
-	ROTATION_ROLL_180_PITCH_270  = 27,
-	ROTATION_MAX
+	ROTATION_PITCH_90_YAW_180    = 27,
+	ROTATION_MAX				 = 28
 };
 
 typedef struct {
@@ -113,7 +113,7 @@ const rot_lookup_t rot_lookup[] = {
 	{  0,  90,   0 },
 	{  0, 270,   0 },
 	{270,   0, 270 },
-	{180, 270,   0 }
+	{0,   270, 180 }
 };
 
 /**
