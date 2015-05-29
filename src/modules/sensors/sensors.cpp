@@ -1871,7 +1871,7 @@ Sensors::set_params_from_rc()
 //						  _rc_parameter_map.value0[i] + _rc_parameter_map.scale[i] * rc_val,
 //						  _rc_parameter_map.value_min[i], _rc_parameter_map.value_max[i]);
 			float param_val = _rc_parameter_map.value_min[i] +
-					(rc_val / 2.0f) * (_rc_parameter_map.value_max[i] - _rc_parameter_map.value_min[i]);
+					((1.0f + rc_val) / 2.0f) * (_rc_parameter_map.value_max[i] - _rc_parameter_map.value_min[i]);
 			warnx("new parameter %d value: %5.3f", i, (double)param_val);
 			param_set(_parameter_handles.rc_param[i], &param_val);
 		}
