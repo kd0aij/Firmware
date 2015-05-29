@@ -50,19 +50,22 @@ MODULES		+= drivers/pwm_input
 #
 # System commands
 #
-MODULES		+= systemcmds/bl_update
-MODULES		+= systemcmds/mixer
-MODULES		+= systemcmds/param
-MODULES		+= systemcmds/perf
-MODULES		+= systemcmds/pwm
-MODULES		+= systemcmds/esc_calib
-MODULES		+= systemcmds/reboot
-MODULES		+= systemcmds/top
-MODULES		+= systemcmds/config
-MODULES		+= systemcmds/nshterm
-MODULES		+= systemcmds/mtd
-MODULES		+= systemcmds/dumpfile
+#MODULES		+= systemcmds/bl_update
+#MODULES		+= systemcmds/mixer
+#MODULES		+= systemcmds/param
+#MODULES		+= systemcmds/perf
+#MODULES		+= systemcmds/pwm
+#MODULES		+= systemcmds/esc_calib
+#MODULES		+= systemcmds/reboot
+#MODULES		+= systemcmds/top
+#MODULES		+= systemcmds/config
+#MODULES		+= systemcmds/nshterm
+#MODULES		+= systemcmds/mtd
+#MODULES		+= systemcmds/dumpfile
 MODULES		+= systemcmds/ver
+MODULES		+= systemcmds/auth
+MODULES		+= modules/libtomcrypt
+MODULES		+= modules/libtomfastmath
 
 #
 # General system control
@@ -77,20 +80,20 @@ MODULES 	+= modules/land_detector
 #
 # Estimation modules (EKF/ SO3 / other filters)
 #
-MODULES		+= modules/attitude_estimator_ekf
-MODULES		+= modules/attitude_estimator_q
-MODULES		+= modules/ekf_att_pos_estimator
-MODULES		+= modules/position_estimator_inav
+#MODULES		+= modules/attitude_estimator_ekf
+#MODULES		+= modules/attitude_estimator_q
+#MODULES		+= modules/ekf_att_pos_estimator
+#MODULES		+= modules/position_estimator_inav
 
 #
 # Vehicle Control
 #
 #MODULES		+= modules/segway # XXX Needs GCC 4.7 fix
-MODULES		+= modules/fw_pos_control_l1
-MODULES		+= modules/fw_att_control
-MODULES		+= modules/mc_att_control
-MODULES		+= modules/mc_pos_control
-MODULES 	+= modules/vtol_att_control
+#MODULES		+= modules/fw_pos_control_l1
+#MODULES		+= modules/fw_att_control
+#MODULES		+= modules/mc_att_control
+#MODULES		+= modules/mc_pos_control
+#MODULES 	+= modules/vtol_att_control
 
 #
 # Logging
