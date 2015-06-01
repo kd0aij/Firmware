@@ -269,3 +269,31 @@ PARAM_DEFINE_FLOAT(MC_ACRO_P_MAX, 90.0f);
  * @group Multicopter Attitude Control
  */
 PARAM_DEFINE_FLOAT(MC_ACRO_Y_MAX, 120.0f);
+
+/**
+ * Pitchrate feed-forward
+ *
+ * @min 0.0
+ * @group Multicopter Attitude Control
+ */
+PARAM_DEFINE_FLOAT(MC_RATES_P_FF, 0.1f);
+
+/**
+ * Yawrate feed-forward
+ *
+ * @min 0.0
+ * @group Multicopter Attitude Control
+ */
+PARAM_DEFINE_FLOAT(MC_RATES_Y_FF, 0.1f);
+
+/**
+ * Trim airspeed
+ *
+ * @min 0.0
+ * @group Multicopter Attitude Control
+ */
+PARAM_DEFINE_FLOAT(MC_AIRS_TRIM, 9.0f);
+
+PARAM_DEFINE_FLOAT(MC_RATE_SCALE,1.0f);
+PARAM_DEFINE_FLOAT(MC_MOM_SCALE,1.0f);
+PARAM_DEFINE_FLOAT(MC_FF_SCALE,1.0f);

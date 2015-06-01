@@ -78,6 +78,7 @@
 #include <uORB/topics/vehicle_attitude.h>
 #include <uORB/topics/vehicle_control_mode.h>
 #include <uORB/topics/vehicle_status.h>
+#include <uORB/topics/vtol_vehicle_status.h>
 #include <uORB/topics/actuator_armed.h>
 #include <uORB/topics/parameter_update.h>
 #include <uORB/topics/multirotor_motor_limits.h>
@@ -134,6 +135,8 @@ private:
 	int		_manual_control_sp_sub;	/**< manual control setpoint subscription */
 	int		_armed_sub;				/**< arming status subscription */
 	int		_vehicle_status_sub;	/**< vehicle status subscription */
+	int 	_vtol_vehicle_status_sub;
+	int 	_vtol_ctrl_status_sub;
 	int 	_motor_limits_sub;		/**< motor limits subscription */
 
 	orb_advert_t	_att_sp_pub;			/**< attitude setpoint publication */
@@ -154,6 +157,7 @@ private:
 	struct actuator_controls_s			_actuators;			/**< actuator controls */
 	struct actuator_armed_s				_armed;				/**< actuator arming status */
 	struct vehicle_status_s				_vehicle_status;	/**< vehicle status */
+	struct vtol_vehicle_status_s 		_vtol_status;
 	struct multirotor_motor_limits_s	_motor_limits;		/**< motor limits */
 	struct mc_att_ctrl_status_s 		_controller_status; /**< controller status */
 
@@ -191,13 +195,18 @@ private:
 		param_t roll_rate_max;
 		param_t pitch_rate_max;
 		param_t yaw_rate_max;
-
 		param_t man_roll_max;
 		param_t man_pitch_max;
 		param_t man_yaw_max;
 		param_t acro_roll_max;
 		param_t acro_pitch_max;
 		param_t acro_yaw_max;
+
+		param_t rate_sp_scale;
+		param_t moment_scale;
+		param_t ff_scale;
+
+		param_t airspeed_trim;
 
 	}		_params_handles;		/**< handles for interesting parameters */
 
@@ -206,12 +215,17 @@ private:
 		math::Vector<3> rate_p;				/**< P gain for angular rate error */
 		math::Vector<3> rate_i;				/**< I gain for angular rate error */
 		math::Vector<3> rate_d;				/**< D gain for angular rate error */
-		math::Vector<3>	rate_ff;			/**< Feedforward gain for desired rates */
+		math::Vector<3> rate_ff;
 		float yaw_ff;						/**< yaw control feed-forward */
+		float yaw_rate_max;					/**< max yaw rate */
+		float airspeed_trim;
+
+		float rate_sp_scale;
+		float moment_scale;
+		float ff_scale;
 
 		float roll_rate_max;
 		float pitch_rate_max;
-		float yaw_rate_max;
 		math::Vector<3> mc_rate_max;		/**< attitude rate limits in stabilized modes */
 
 		float man_roll_max;
@@ -272,6 +286,11 @@ private:
 	void		vehicle_status_poll();
 
 	/**
+	 * Check for vtol status updates.
+	 */
+	void 		vtol_status_poll();
+
+	/**
 	 * Check for vehicle motor limits status.
 	 */
 	void		vehicle_motor_limits_poll();
@@ -312,6 +331,7 @@ MulticopterAttitudeControl::MulticopterAttitudeControl() :
 	_manual_control_sp_sub(-1),
 	_armed_sub(-1),
 	_vehicle_status_sub(-1),
+	_vtol_ctrl_status_sub(-1),
 
 /* publications */
 	_att_sp_pub(nullptr),
@@ -336,6 +356,7 @@ MulticopterAttitudeControl::MulticopterAttitudeControl() :
 	memset(&_actuators, 0, sizeof(_actuators));
 	memset(&_armed, 0, sizeof(_armed));
 	memset(&_vehicle_status, 0, sizeof(_vehicle_status));
+	memset(&_vtol_status,0,sizeof(_vtol_status));
 	memset(&_motor_limits, 0, sizeof(_motor_limits));
 	memset(&_controller_status,0,sizeof(_controller_status));
 	_vehicle_status.is_rotary_wing = true;
@@ -352,8 +373,10 @@ MulticopterAttitudeControl::MulticopterAttitudeControl() :
 	_params.man_roll_max = 0.0f;
 	_params.man_pitch_max = 0.0f;
 	_params.man_yaw_max = 0.0f;
+	_params.airspeed_trim = 0.0f;
 	_params.mc_rate_max.zero();
 	_params.acro_rate_max.zero();
+	_params.rate_ff.zero();
 
 	_rates_prev.zero();
 	_rates_sp.zero();
@@ -386,9 +409,15 @@ MulticopterAttitudeControl::MulticopterAttitudeControl() :
 	_params_handles.man_roll_max	= 	param_find("MC_MAN_R_MAX");
 	_params_handles.man_pitch_max	= 	param_find("MC_MAN_P_MAX");
 	_params_handles.man_yaw_max		= 	param_find("MC_MAN_Y_MAX");
+	_params_handles.airspeed_trim 	= 	param_find("MC_AIRS_TRIM");
 	_params_handles.acro_roll_max	= 	param_find("MC_ACRO_R_MAX");
 	_params_handles.acro_pitch_max	= 	param_find("MC_ACRO_P_MAX");
 	_params_handles.acro_yaw_max		= 	param_find("MC_ACRO_Y_MAX");
+
+	_params_handles.rate_sp_scale = param_find("MC_RATE_SCALE");
+	_params_handles.moment_scale = param_find("MC_MOM_SCALE");
+	_params_handles.ff_scale = param_find("MC_FF_SCALE");
+
 
 	/* fetch initial parameter values */
 	parameters_update();
@@ -469,7 +498,13 @@ MulticopterAttitudeControl::parameters_update()
 	param_get(_params_handles.yaw_rate_max, &_params.yaw_rate_max);
 	_params.mc_rate_max(2) = math::radians(_params.yaw_rate_max);
 
-	/* manual attitude control scale */
+	param_get(_params_handles.airspeed_trim, &_params.airspeed_trim);
+
+	param_get(_params_handles.rate_sp_scale, & _params.rate_sp_scale);
+	param_get(_params_handles.moment_scale, & _params.moment_scale);
+	param_get(_params_handles.ff_scale, & _params.ff_scale);
+
+	/* manual control scale */
 	param_get(_params_handles.man_roll_max, &_params.man_roll_max);
 	param_get(_params_handles.man_pitch_max, &_params.man_pitch_max);
 	param_get(_params_handles.man_yaw_max, &_params.man_yaw_max);
@@ -568,6 +603,17 @@ MulticopterAttitudeControl::arming_status_poll()
 }
 
 void
+MulticopterAttitudeControl::vtol_status_poll() {
+	/* check if there is a new setpoint */
+	bool updated;
+	orb_check(_vtol_vehicle_status_sub, &updated);
+
+	if (updated) {
+		orb_copy(ORB_ID(vtol_vehicle_status), _vtol_vehicle_status_sub, &_vtol_status);
+	}
+}
+
+void
 MulticopterAttitudeControl::vehicle_status_poll()
 {
 	/* check if there is new status information */
@@ -610,82 +656,28 @@ void
 MulticopterAttitudeControl::control_attitude(float dt)
 {
 	vehicle_attitude_setpoint_poll();
-
+	
 	_thrust_sp = _v_att_sp.thrust;
 
 	/* construct attitude setpoint rotation matrix */
 	math::Matrix<3, 3> R_sp;
 	R_sp.set(_v_att_sp.R_body);
 
-	/* rotation matrix for current state */
-	math::Matrix<3, 3> R;
-	R.set(_v_att.R);
+	float yaw_w = R_sp(2,2)*R_sp(2,2);
 
-	/* all input data is ready, run controller itself */
+	math::Quaternion q_error;
+	memcpy(&q_error.data[0],&_v_att_sp.q_e[0],sizeof(q_error.data));
 
-	/* try to move thrust vector shortest way, because yaw response is slower than roll/pitch */
-	math::Vector<3> R_z(R(0, 2), R(1, 2), R(2, 2));
-	math::Vector<3> R_sp_z(R_sp(0, 2), R_sp(1, 2), R_sp(2, 2));
+	_rates_sp = q_error(0) > 0.0f ? _params.att_p.emult(-q_error.imag()*2.0f) : _params.att_p.emult(q_error.imag()*2.0f);
+	float airspeed_scaling = _params.airspeed_trim / ((_vtol_status.airspeed_tot < _params.airspeed_trim - 1.0f) ? _params.airspeed_trim - 1.0f : _vtol_status.airspeed_tot);
+	_rates_sp(1) *= airspeed_scaling*airspeed_scaling;
+	_rates_sp(2) *= airspeed_scaling*airspeed_scaling;
+	
+	/* limit yaw rate */
+	_rates_sp(2) = math::constrain(_rates_sp(2), -_params.yaw_rate_max, _params.yaw_rate_max);
 
-	/* axis and sin(angle) of desired rotation */
-	math::Vector<3> e_R = R.transposed() * (R_z % R_sp_z);
-
-	/* calculate angle error */
-	float e_R_z_sin = e_R.length();
-	float e_R_z_cos = R_z * R_sp_z;
-
-	/* calculate weight for yaw control */
-	float yaw_w = R_sp(2, 2) * R_sp(2, 2);
-
-	/* calculate rotation matrix after roll/pitch only rotation */
-	math::Matrix<3, 3> R_rp;
-
-	if (e_R_z_sin > 0.0f) {
-		/* get axis-angle representation */
-		float e_R_z_angle = atan2f(e_R_z_sin, e_R_z_cos);
-		math::Vector<3> e_R_z_axis = e_R / e_R_z_sin;
-
-		e_R = e_R_z_axis * e_R_z_angle;
-
-		/* cross product matrix for e_R_axis */
-		math::Matrix<3, 3> e_R_cp;
-		e_R_cp.zero();
-		e_R_cp(0, 1) = -e_R_z_axis(2);
-		e_R_cp(0, 2) = e_R_z_axis(1);
-		e_R_cp(1, 0) = e_R_z_axis(2);
-		e_R_cp(1, 2) = -e_R_z_axis(0);
-		e_R_cp(2, 0) = -e_R_z_axis(1);
-		e_R_cp(2, 1) = e_R_z_axis(0);
-
-		/* rotation matrix for roll/pitch only rotation */
-		R_rp = R * (_I + e_R_cp * e_R_z_sin + e_R_cp * e_R_cp * (1.0f - e_R_z_cos));
-
-	} else {
-		/* zero roll/pitch rotation */
-		R_rp = R;
-	}
-
-	/* R_rp and R_sp has the same Z axis, calculate yaw error */
-	math::Vector<3> R_sp_x(R_sp(0, 0), R_sp(1, 0), R_sp(2, 0));
-	math::Vector<3> R_rp_x(R_rp(0, 0), R_rp(1, 0), R_rp(2, 0));
-	e_R(2) = atan2f((R_rp_x % R_sp_x) * R_sp_z, R_rp_x * R_sp_x) * yaw_w;
-
-	if (e_R_z_cos < 0.0f) {
-		/* for large thrust vector rotations use another rotation method:
-		 * calculate angle and axis for R -> R_sp rotation directly */
-		math::Quaternion q;
-		q.from_dcm(R.transposed() * R_sp);
-		math::Vector<3> e_R_d = q.imag();
-		e_R_d.normalize();
-		e_R_d *= 2.0f * atan2f(e_R_d.length(), q(0));
-
-		/* use fusion of Z axis based rotation and direct rotation */
-		float direct_w = e_R_z_cos * e_R_z_cos * yaw_w;
-		e_R = e_R * (1.0f - direct_w) + e_R_d * direct_w;
-	}
-
-	/* calculate angular rates setpoint */
-	_rates_sp = _params.att_p.emult(e_R);
+	/* feed forward yaw setpoint rate */
+	_rates_sp(2) += _v_att_sp.yaw_sp_move_rate * yaw_w * _params.yaw_ff;
 
 	/* limit rates */
 	for (int i = 0; i < 3; i++) {
@@ -716,9 +708,13 @@ MulticopterAttitudeControl::control_attitude_rates(float dt)
 	rates(2) = _v_att.yawspeed;
 
 	/* angular rates error */
+	float airspeed_scaling = _params.airspeed_trim / ((_vtol_status.airspeed_tot < _params.airspeed_trim - 1.0f) ? _params.airspeed_trim - 1.0f : _vtol_status.airspeed_tot);
 	math::Vector<3> rates_err = _rates_sp - rates;
-	_att_control = _params.rate_p.emult(rates_err) + _params.rate_d.emult(_rates_prev - rates) / dt + _rates_int + _params.rate_ff.emult(_rates_sp - _rates_sp_prev) / dt;
-	_rates_sp_prev = _rates_sp;
+
+	_att_control(0) = _params.rate_p(0)*rates_err(0) + _params.rate_d(0)*(_rates_prev(0) - rates(0)) / dt + _rates_int(0);
+	_att_control(1) = (_params.rate_p(1)*rates_err(1) + _params.rate_d(1)*(_rates_prev(1) - rates(1)) / dt + _rates_int(1) + _params.rate_ff(1)*_rates_sp(1))*airspeed_scaling*airspeed_scaling;
+	_att_control(2) = (_params.rate_p(2)*rates_err(2) + _params.rate_d(2)*(_rates_prev(2) - rates(2)) / dt + _rates_int(2) + _params.rate_ff(2)*_rates_sp(2))*airspeed_scaling*airspeed_scaling;
+
 	_rates_prev = rates;
 
 	/* update integral only if not saturated on low limit and if motor commands are not saturated */
@@ -757,6 +753,7 @@ MulticopterAttitudeControl::task_main()
 	_manual_control_sp_sub = orb_subscribe(ORB_ID(manual_control_setpoint));
 	_armed_sub = orb_subscribe(ORB_ID(actuator_armed));
 	_vehicle_status_sub = orb_subscribe(ORB_ID(vehicle_status));
+	_vtol_vehicle_status_sub = orb_subscribe(ORB_ID(vtol_vehicle_status));
 	_motor_limits_sub = orb_subscribe(ORB_ID(multirotor_motor_limits));
 
 	/* initialize parameters cache */
@@ -810,6 +807,7 @@ MulticopterAttitudeControl::task_main()
 			arming_status_poll();
 			vehicle_manual_poll();
 			vehicle_status_poll();
+			vtol_status_poll();
 			vehicle_motor_limits_poll();
 
 			if (_v_control_mode.flag_control_attitude_enabled) {
