@@ -68,8 +68,9 @@
 #include <uORB/topics/vtol_vehicle_status.h>
 #include <uORB/topics/actuator_armed.h>
 #include <uORB/topics/airspeed.h>
-#include <uORB/topics/parameter_update.h>
 #include <uORB/topics/vehicle_local_position.h>
+#include <uORB/topics/parameter_update.h>
+#include <uORB/topics/vehicle_local_position_setpoint.h>
 #include <uORB/topics/battery_status.h>
 #include <systemlib/param/param.h>
 #include <systemlib/err.h>
@@ -123,6 +124,7 @@ private:
 	orb_advert_t 	_actuators_1_pub;
 	orb_advert_t	_vtol_vehicle_status_pub;
 	orb_advert_t	_v_rates_sp_pub;
+	orb_advert_t  	_att_sp_pub;
 //*******************data containers***********************************************************
 	struct vehicle_attitude_s			_v_att;				//vehicle attitude
 	struct vehicle_attitude_setpoint_s	_v_att_sp;			//vehicle attitude setpoint
@@ -139,6 +141,7 @@ private:
 	struct actuator_armed_s				_armed;				//actuator arming status
 	struct vehicle_local_position_s		_local_pos;
 	struct airspeed_s 					_airspeed;			// airspeed
+	struct vehicle_local_position_setpoint_s _local_pos_sp; // vehicle local position setpoint
 	struct battery_status_s 			_batt_status; 		// battery status
 
 	struct {
@@ -152,6 +155,7 @@ private:
 		float power_max;			// maximum power of one engine
 		float prop_eff;				// factor to calculate prop efficiency
 		float arsp_lp_gain;			// total airspeed estimate low pass gain
+		float airspeed_ratio;
 	} _params;
 
 	struct {
@@ -165,6 +169,7 @@ private:
 		param_t power_max;
 		param_t prop_eff;
 		param_t arsp_lp_gain;
+		param_t airspeed_ratio;
 	} _params_handles;
 
 	perf_counter_t	_loop_perf;			/**< loop performance counter */
@@ -182,6 +187,7 @@ private:
 	void 		task_main();	//main task
 	static void	task_main_trampoline(int argc, char *argv[]);	//Shim for calling task_main from task_create.
 
+	void 		vehicle_attitude_poll();		// Check for changes in vehicle attitude
 	void		vehicle_control_mode_poll();	//Check for changes in vehicle control mode.
 	void		vehicle_manual_poll();			//Check for changes in manual inputs.
 	void		arming_status_poll();			//Check for arming status updates.
@@ -260,6 +266,7 @@ VtolAttitudeControl::VtolAttitudeControl() :
 	memset(&_armed, 0, sizeof(_armed));
 	memset(&_local_pos,0,sizeof(_local_pos));
 	memset(&_airspeed,0,sizeof(_airspeed));
+	memset(&_local_pos_sp,0,sizeof(_local_pos_sp));
 	memset(&_batt_status,0,sizeof(_batt_status));
 
 	_params.idle_pwm_mc = PWM_LOWEST_MIN;
@@ -276,6 +283,7 @@ VtolAttitudeControl::VtolAttitudeControl() :
 	_params_handles.power_max = param_find("VT_POWER_MAX");
 	_params_handles.prop_eff = param_find("VT_PROP_EFF");
 	_params_handles.arsp_lp_gain = param_find("VT_ARSP_LP_GAIN");
+	_params_handles.airspeed_ratio = param_find("VT_ARSP_RATIO");
 
 	/* fetch initial parameter values */
 	parameters_update();
@@ -306,6 +314,21 @@ VtolAttitudeControl::~VtolAttitudeControl()
 	}
 
 	VTOL_att_control::g_control = nullptr;
+}
+
+/**
+* Check for changes in attitude
+*/
+void VtolAttitudeControl::vehicle_attitude_poll()
+{
+	bool updated;
+
+	/* Check if vehicle attitude has changed */
+	orb_check(_v_att_sub, &updated);
+
+	if (updated) {
+		orb_copy(ORB_ID(vehicle_attitude), _v_att_sub, &_v_att);
+	}
 }
 
 /**
@@ -448,7 +471,7 @@ VtolAttitudeControl::parameters_update_poll()
 }
 
 /**
-* Check for sensor updates.
+* Check for local position updates.
 */
 void
 VtolAttitudeControl::vehicle_local_pos_poll()
@@ -507,6 +530,9 @@ VtolAttitudeControl::parameters_update()
 	param_get(_params_handles.arsp_lp_gain, &v);
 	_params.arsp_lp_gain = v;
 
+	/* vtol total airspeed ratio */
+	param_get(_params_handles.airspeed_ratio, &v);
+	_params.airspeed_ratio = v;
 	return OK;
 }
 
@@ -515,14 +541,26 @@ VtolAttitudeControl::parameters_update()
 */
 void VtolAttitudeControl::fill_mc_att_control_output()
 {
+	float remain = 1.0f;	// yaw scaling, priority is given to pitch control
 	_actuators_out_0.control[0] = _actuators_mc_in.control[0];
 	_actuators_out_0.control[1] = _actuators_mc_in.control[1];
 	_actuators_out_0.control[2] = _actuators_mc_in.control[2];
 	_actuators_out_0.control[3] = _actuators_mc_in.control[3];
-	//set neutral position for elevons
-	_actuators_out_1.control[0] = _actuators_mc_in.control[2];	//roll elevon
-	_actuators_out_1.control[1] = _actuators_mc_in.control[1];;	//pitch elevon
-	_actuators_out_1.control[4] = _tilt_control;	// for tilt-rotor control
+
+	// give pitch control first priority -> reduce yaw control if necessary
+	_actuators_mc_in.control[1] = math::constrain(_actuators_mc_in.control[1],-1.0f,1.0f);
+	_actuators_mc_in.control[2] = math::constrain(_actuators_mc_in.control[2],-1.0f,1.0f);
+
+	if(fabsf(_actuators_mc_in.control[1]) + fabsf(_actuators_mc_in.control[2]) > 1.0f && _manual_control_sp.aux2 < 0) {
+		remain = 1.0f - fabsf(_actuators_mc_in.control[1]);
+	}
+	// elevons
+	float trim_factor = 0.0f;
+	if(_manual_control_sp.aux2 > 0.0f) {
+		trim_factor = 0.2f;
+	}
+	_actuators_out_1.control[0] = _actuators_mc_in.control[2]*remain;	//roll elevon
+	_actuators_out_1.control[1] = _actuators_mc_in.control[1] + trim_factor;
 }
 
 /**
@@ -639,16 +677,8 @@ VtolAttitudeControl::scale_mc_output() {
 		airspeed = math::constrain(airspeed,_params.mc_airspeed_min, _params.mc_airspeed_max);
 	}
 
-	_vtol_vehicle_status.airspeed_tot = airspeed;	// save value for logging
-	/*
-	 * For scaling our actuators using anything less than the min (close to stall)
-	 * speed doesn't make any sense - its the strongest reasonable deflection we
-	 * want to do in flight and its the baseline a human pilot would choose.
-	 *
-	 * Forcing the scaling to this value allows reasonable handheld tests.
-	 */
-	float airspeed_scaling = _params.mc_airspeed_trim / ((airspeed < _params.mc_airspeed_min) ? _params.mc_airspeed_min : airspeed);
-	_actuators_mc_in.control[1] = math::constrain(_actuators_mc_in.control[1]*airspeed_scaling*airspeed_scaling,-1.0f,1.0f);
+	// scaling will be applied in mc attitude controller
+	_vtol_vehicle_status.airspeed_tot = airspeed;
 }
 
 void VtolAttitudeControl::calc_tot_airspeed() {
@@ -663,7 +693,7 @@ void VtolAttitudeControl::calc_tot_airspeed() {
 	// calculate induced airspeed by propeller
 	float v_ind = (airspeed/eta - airspeed)*2.0f;
 	// calculate total airspeed
-	float airspeed_raw = airspeed + v_ind;
+	float airspeed_raw = airspeed + _params.airspeed_ratio*v_ind;
 	// apply low-pass filter
 	_airspeed_tot = _params.arsp_lp_gain * (_airspeed_tot - airspeed_raw) + airspeed_raw;
 }
@@ -705,7 +735,7 @@ void VtolAttitudeControl::task_main()
 	flag_idle_mc = true;
 
 	/* wakeup source*/
-	struct pollfd fds[3];	/*input_mc, input_fw, parameters*/
+	struct pollfd fds[4];	/*input_mc, input_fw, parameters*/
 
 	fds[0].fd     = _actuator_inputs_mc;
 	fds[0].events = POLLIN;
@@ -713,7 +743,10 @@ void VtolAttitudeControl::task_main()
 	fds[1].events = POLLIN;
 	fds[2].fd     = _params_sub;
 	fds[2].events = POLLIN;
+	fds[3].fd 	= _local_pos_sub;
+	fds[3].events = POLLIN;
 
+	
 	while (!_task_should_exit) {
 		/*Advertise/Publish vtol vehicle status*/
 		if (_vtol_vehicle_status_pub != nullptr) {
@@ -752,6 +785,7 @@ void VtolAttitudeControl::task_main()
 
 		_vtol_vehicle_status.fw_permanent_stab = _params.vtol_fw_permanent_stab == 1 ? true : false;
 
+		vehicle_attitude_poll();		// Check for changes in vehicle attitude
 		vehicle_control_mode_poll();	//Check for changes in vehicle control mode.
 		vehicle_manual_poll();			//Check for changes in manual inputs.
 		arming_status_poll();			//Check for arming status updates.
@@ -763,7 +797,6 @@ void VtolAttitudeControl::task_main()
 		vehicle_local_pos_poll();			// Check for new sensor values
 		vehicle_airspeed_poll();
 		vehicle_battery_poll();
-
 
 		if (_manual_control_sp.aux1 < 0.0f) {		/* vehicle is in mc mode */
 			_vtol_vehicle_status.vtol_in_rw_mode = true;
@@ -778,7 +811,6 @@ void VtolAttitudeControl::task_main()
 				vehicle_manual_poll();	/* update remote input */
 				orb_copy(ORB_ID(actuator_controls_virtual_mc), _actuator_inputs_mc, &_actuators_mc_in);
 
-				// scale pitch control with total airspeed
 				scale_mc_output();
 
 				fill_mc_att_control_output();
