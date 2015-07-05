@@ -327,6 +327,10 @@ void AttitudeEstimatorQ::task_main() {
 		memcpy(&att.R[0], R.data, sizeof(att.R));
 		att.R_valid = true;
 
+		/* copy quaternion */
+		memcpy(&att.q[0], _q.data, sizeof(att.q));
+		att.q_valid = true;
+
 		if (_att_pub < 0) {
 			_att_pub = orb_advertise(ORB_ID(vehicle_attitude), &att);
 		} else {

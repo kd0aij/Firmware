@@ -596,8 +596,21 @@ MulticopterAttitudeControl::control_attitude(float dt)
 	R_sp.set(_v_att_sp.R_body);
 
 	/* rotation matrix for current state */
-	math::Matrix<3, 3> R;
-	R.set(_v_att.R);
+//	math::Matrix<3, 3> R;
+//	R.set(_v_att.R);
+
+	/* extrapolate current state to compensate for thrust latency */
+	/* current body angular rates */
+	math::Vector<3> rates;
+	rates(0) = _v_att.rollspeed;
+	rates(1) = _v_att.pitchspeed;
+	rates(2) = _v_att.yawspeed;
+	math::Quaternion extq;
+	extq.set(_v_att.q);
+	extq += extq.derivative(rates) * .06f;	/* latency estimate hardwired to 60msec */
+	extq.normalize();
+
+	math::Matrix<3, 3> R(extq.to_dcm());
 
 	/* all input data is ready, run controller itself */
 
