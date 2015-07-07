@@ -949,6 +949,8 @@ MulticopterPositionControl::task_main()
 	fds[0].fd = _local_pos_sub;
 	fds[0].events = POLLIN;
 
+	static int pcnt = 0;
+
 	while (!_task_should_exit) {
 		/* wait for up to 500ms for data */
 		int pret = poll(&fds[0], (sizeof(fds) / sizeof(fds[0])), 500);
@@ -1409,6 +1411,23 @@ MulticopterPositionControl::task_main()
 			if (!_control_mode.flag_control_velocity_enabled) {
 				_att_sp.roll_body = _manual.y * _params.man_roll_max;
 				_att_sp.pitch_body = -_manual.x * _params.man_pitch_max;
+
+				/* rotate attitude setpoint such that forward is always East */
+				float theta = 1.5708f - _att.yaw;
+				float stheta = arm_sin_f32(theta);
+				float ctheta = arm_cos_f32(theta);
+				float rollPrime = _att_sp.roll_body * ctheta - _att_sp.pitch_body * stheta;
+				float pitchPrime = _att_sp.roll_body * stheta + _att_sp.pitch_body * ctheta;
+
+				if (pcnt++ > 99) {
+					warnx("roll/pitch: %5.3f, %5.3f -> %5.3f, %5.3f",
+							(double)_att_sp.roll_body, (double)_att_sp.pitch_body,
+							(double)rollPrime, (double)pitchPrime);
+					pcnt = 0;
+				}
+
+				_att_sp.roll_body = rollPrime;
+				_att_sp.pitch_body = pitchPrime;
 			}
 
 			/* control throttle directly if no climb rate controller is active */

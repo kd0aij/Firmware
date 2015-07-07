@@ -190,6 +190,9 @@ private:
 		param_t pitch_rate_max;
 		param_t yaw_rate_max;
 
+		param_t roll_latency;
+		param_t pitch_latency;
+
 		param_t acro_roll_max;
 		param_t acro_pitch_max;
 		param_t acro_yaw_max;
@@ -203,6 +206,9 @@ private:
 		math::Vector<3> rate_d;				/**< D gain for angular rate error */
 		math::Vector<3>	rate_ff;			/**< Feedforward gain for desired rates */
 		float yaw_ff;						/**< yaw control feed-forward */
+
+		float roll_latency;
+		float pitch_latency;
 
 		float roll_rate_max;
 		float pitch_rate_max;
@@ -372,6 +378,8 @@ MulticopterAttitudeControl::MulticopterAttitudeControl() :
 	_params_handles.roll_rate_max	= 	param_find("MC_ROLLRATE_MAX");
 	_params_handles.pitch_rate_max	= 	param_find("MC_PITCHRATE_MAX");
 	_params_handles.yaw_rate_max	= 	param_find("MC_YAWRATE_MAX");
+	_params_handles.roll_latency	= 	param_find("MC_ROLL_LATENCY");
+	_params_handles.pitch_latency	= 	param_find("MC_PITCH_LATENCY");
 	_params_handles.acro_roll_max	= 	param_find("MC_ACRO_R_MAX");
 	_params_handles.acro_pitch_max	= 	param_find("MC_ACRO_P_MAX");
 	_params_handles.acro_yaw_max	= 	param_find("MC_ACRO_Y_MAX");
@@ -454,6 +462,10 @@ MulticopterAttitudeControl::parameters_update()
 	_params.mc_rate_max(1) = math::radians(_params.pitch_rate_max);
 	param_get(_params_handles.yaw_rate_max, &_params.yaw_rate_max);
 	_params.mc_rate_max(2) = math::radians(_params.yaw_rate_max);
+
+	/* attitude control latencies */
+	param_get(_params_handles.roll_latency, &_params.roll_latency);
+	param_get(_params_handles.pitch_latency, &_params.pitch_latency);
 
 	/* manual rate control scale and auto mode roll/pitch rate limits */
 	param_get(_params_handles.acro_roll_max, &v);
@@ -596,21 +608,28 @@ MulticopterAttitudeControl::control_attitude(float dt)
 	R_sp.set(_v_att_sp.R_body);
 
 	/* rotation matrix for current state */
-//	math::Matrix<3, 3> R;
-//	R.set(_v_att.R);
+	math::Matrix<3, 3> R_att;
+	R_att.set(_v_att.R);
 
-	/* extrapolate current state to compensate for thrust latency */
+	/* extrapolate current attitude to compensate for thrust latency */
 	/* current body angular rates */
 	math::Vector<3> rates;
 	rates(0) = _v_att.rollspeed;
 	rates(1) = _v_att.pitchspeed;
 	rates(2) = _v_att.yawspeed;
-	math::Quaternion extq;
-	extq.set(_v_att.q);
-	extq += extq.derivative(rates) * .06f;	/* latency estimate hardwired to 60msec */
-	extq.normalize();
 
-	math::Matrix<3, 3> R(extq.to_dcm());
+	math::Quaternion extq1;
+	extq1.set(_v_att.q);
+	extq1 += extq1.derivative(rates) * _params.roll_latency;	/* roll response latency estimate */
+	extq1.normalize();
+
+	math::Quaternion extq2;
+	extq2.set(_v_att.q);
+	extq2 += extq2.derivative(rates) * _params.pitch_latency;	/* pitch response latency estimate */
+	extq2.normalize();
+
+	/* rotation matrix for projected state */
+	math::Matrix<3, 3> R(extq1.to_dcm());
 
 	/* all input data is ready, run controller itself */
 

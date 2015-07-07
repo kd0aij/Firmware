@@ -279,3 +279,23 @@ PARAM_DEFINE_FLOAT(MC_ACRO_Y_MAX, 360.0f);
  * @group Multicopter Attitude Control
  */
 PARAM_DEFINE_FLOAT(MC_ACRO_STAB, 0.0f);
+
+/**
+ * Roll angle response latency
+ *
+ * @unit seconds
+ * @min 0.0
+ * @max 1.0
+ * @group Multicopter Attitude Control
+ */
+PARAM_DEFINE_FLOAT(MC_ROLL_LATENCY, 0.0f);
+
+/**
+ * Pitch angle response latency
+ *
+ * @unit seconds
+ * @min 0.0
+ * @max 1.0
+ * @group Multicopter Attitude Control
+ */
+PARAM_DEFINE_FLOAT(MC_PITCH_LATENCY, 0.0f);
