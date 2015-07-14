@@ -187,52 +187,66 @@ float ECL_YawController::control_bodyrate_impl(const struct ECL_ControlData &ctl
 		airspeed = ctl_data.airspeed_min;
 	}
 
-
-	/* Transform setpoint to body angular rates (jacobian) */
-	_bodyrate_setpoint = -sinf(ctl_data.roll) * ctl_data.pitch_rate_setpoint +
-			     cosf(ctl_data.roll) * cosf(ctl_data.pitch) * _rate_setpoint;
-
 	/* Close the acceleration loop if _coordinated_method wants this: change body_rate setpoint */
 	if (_coordinated_method == COORD_METHOD_CLOSEACC) {
-		//XXX: filtering of acceleration?
-		_bodyrate_setpoint -= (ctl_data.acc_body_y / (airspeed * cosf(ctl_data.pitch)));
-	}
 
-	/* Transform estimation to body angular rates (jacobian) */
-	float yaw_bodyrate = -sinf(ctl_data.roll) * ctl_data.pitch_rate +
-			     cosf(ctl_data.roll) * cosf(ctl_data.pitch) * ctl_data.yaw_rate;
+		// implement efficient IIR lowpass for irregular sampling
+		// need to compute alpha for acc_body_y and maintain a filtered value
 
-	/* Calculate body angular rate error */
-	_rate_error = _bodyrate_setpoint - yaw_bodyrate; //body angular rate error
+		// convert lateral acceleration to delta rate required to cancel it and sum into bodyrate setpoint
+		_rate_error = -ctl_data.acc_body_y / airspeed;
+		_bodyrate_setpoint += _rate_error;
+		_bodyrate_setpoint = math::constrain(_bodyrate_setpoint, -_max_rate, _max_rate);
 
-	if (!lock_integrator && _k_i > 0.0f && airspeed > 0.5f * ctl_data.airspeed_min) {
+		/* Apply P rate controller and store non-limited output */
+		_last_output = (_bodyrate_setpoint * _k_ff + _rate_error * _k_p) * ctl_data.scaler *
+				   ctl_data.scaler;  //scaler is proportional to 1/airspeed
+	} else {
+		/* Transform setpoint to body angular rates (jacobian) */
+		_bodyrate_setpoint = -sinf(ctl_data.roll) * ctl_data.pitch_rate_setpoint
+				     + cosf(ctl_data.roll) * cosf(ctl_data.pitch) * _rate_setpoint;
 
-		float id = _rate_error * dt;
+		/* Transform estimation to body angular rates (jacobian) */
+		float yaw_bodyrate = -sinf(ctl_data.roll) * ctl_data.pitch_rate +
+				     cosf(ctl_data.roll) * cosf(ctl_data.pitch) * ctl_data.yaw_rate;
 
-		/*
-		 * anti-windup: do not allow integrator to increase if actuator is at limit
-		 */
-		if (_last_output < -1.0f) {
-			/* only allow motion to center: increase value */
-			id = math::max(id, 0.0f);
+		/* Calculate body angular rate error */
+		_rate_error = _bodyrate_setpoint - yaw_bodyrate; //body angular rate error
 
-		} else if (_last_output > 1.0f) {
-			/* only allow motion to center: decrease value */
-			id = math::min(id, 0.0f);
+		if (!lock_integrator && _k_i > 0.0f && airspeed > 0.5f * ctl_data.airspeed_min) {
+
+			float id = _rate_error * dt;
+
+			/*
+			 * anti-windup: do not allow integrator to increase if actuator is at limit
+			 */
+			if (_last_output < -1.0f) {
+				/* only allow motion to center: increase value */
+				id = math::max(id, 0.0f);
+
+			} else if (_last_output > 1.0f) {
+				/* only allow motion to center: decrease value */
+				id = math::min(id, 0.0f);
+			}
+			_integrator += id;
 		}
 
-		_integrator += id;
+		/* integrator limit */
+		//xxx: until start detection is available: integral part in control signal is limited here
+		float integrator_constrained = math::constrain(_integrator * _k_i, -_integrator_max, _integrator_max);
+
+		/* Apply PI rate controller and store non-limited output */
+		_last_output = (_bodyrate_setpoint * _k_ff + _rate_error * _k_p + integrator_constrained) * ctl_data.scaler *
+			       ctl_data.scaler;  //scaler is proportional to 1/airspeed
 	}
-
-	/* integrator limit */
-	//xxx: until start detection is available: integral part in control signal is limited here
-	float integrator_constrained = math::constrain(_integrator * _k_i, -_integrator_max, _integrator_max);
-
-	/* Apply PI rate controller and store non-limited output */
-	_last_output = (_bodyrate_setpoint * _k_ff + _rate_error * _k_p + integrator_constrained) * ctl_data.scaler *
-		       ctl_data.scaler;  //scaler is proportional to 1/airspeed
 	//warnx("yaw:_last_output: %.4f, _integrator: %.4f, _integrator_max: %.4f, airspeed %.4f, _k_i %.4f, _k_p: %.4f", (double)_last_output, (double)_integrator, (double)_integrator_max, (double)airspeed, (double)_k_i, (double)_k_p);
-
+//	static int counter = 0;
+//
+//	if (counter % 5 == 0)
+//		warnx("yaw: _bodyrate_setpoint %.4f _rate_error %.4f _last_output %.4f scaler %.4f",
+//		      (double) _bodyrate_setpoint, (double) _rate_error, (double) _last_output, (double) ctl_data.scaler);
+//
+//	counter++;
 
 	return math::constrain(_last_output, -1.0f, 1.0f);
 }
