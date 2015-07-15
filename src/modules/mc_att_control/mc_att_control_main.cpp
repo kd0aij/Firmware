@@ -192,6 +192,7 @@ private:
 
 		param_t roll_latency;
 		param_t pitch_latency;
+		param_t yaw_latency;
 
 		param_t acro_roll_max;
 		param_t acro_pitch_max;
@@ -200,7 +201,7 @@ private:
 	}		_params_handles;		/**< handles for interesting parameters */
 
 	struct {
-		math::Vector<3> att_p;					/**< P gain for angular error */
+		math::Vector<3> att_p;				/**< P gain for angular error */
 		math::Vector<3> rate_p;				/**< P gain for angular rate error */
 		math::Vector<3> rate_i;				/**< I gain for angular rate error */
 		math::Vector<3> rate_d;				/**< D gain for angular rate error */
@@ -209,6 +210,7 @@ private:
 
 		float roll_latency;
 		float pitch_latency;
+		float yaw_latency;
 
 		float roll_rate_max;
 		float pitch_rate_max;
@@ -380,6 +382,7 @@ MulticopterAttitudeControl::MulticopterAttitudeControl() :
 	_params_handles.yaw_rate_max	= 	param_find("MC_YAWRATE_MAX");
 	_params_handles.roll_latency	= 	param_find("MC_ROLL_LATENCY");
 	_params_handles.pitch_latency	= 	param_find("MC_PITCH_LATENCY");
+	_params_handles.yaw_latency		= 	param_find("MC_YAW_LATENCY");
 	_params_handles.acro_roll_max	= 	param_find("MC_ACRO_R_MAX");
 	_params_handles.acro_pitch_max	= 	param_find("MC_ACRO_P_MAX");
 	_params_handles.acro_yaw_max	= 	param_find("MC_ACRO_Y_MAX");
@@ -466,6 +469,7 @@ MulticopterAttitudeControl::parameters_update()
 	/* attitude control latencies */
 	param_get(_params_handles.roll_latency, &_params.roll_latency);
 	param_get(_params_handles.pitch_latency, &_params.pitch_latency);
+	param_get(_params_handles.yaw_latency, &_params.yaw_latency);
 
 	/* manual rate control scale and auto mode roll/pitch rate limits */
 	param_get(_params_handles.acro_roll_max, &v);
@@ -608,28 +612,34 @@ MulticopterAttitudeControl::control_attitude(float dt)
 	R_sp.set(_v_att_sp.R_body);
 
 	/* rotation matrix for current state */
+//	math::Matrix<3, 3> R;
+//	R.set(_v_att.R);
+
 	math::Matrix<3, 3> R_att;
 	R_att.set(_v_att.R);
 
 	/* extrapolate current attitude to compensate for thrust latency */
-	/* current body angular rates */
-	math::Vector<3> rates;
-	rates(0) = _v_att.rollspeed;
-	rates(1) = _v_att.pitchspeed;
-	rates(2) = _v_att.yawspeed;
+	float xdtheta = _v_att.rollspeed * _params.roll_latency;
+	float stheta = arm_sin_f32(xdtheta);
+	float ctheta = arm_cos_f32(xdtheta);
+	float xdata[3][3] = {{1.0f, 0.0f, 0.0f}, {0.0f, ctheta, -stheta}, {0.0f, stheta, ctheta}};
+	math::Matrix<3, 3> Rx(xdata);
 
-	math::Quaternion extq1;
-	extq1.set(_v_att.q);
-	extq1 += extq1.derivative(rates) * _params.roll_latency;	/* roll response latency estimate */
-	extq1.normalize();
+	float ydtheta = _v_att.pitchspeed * _params.pitch_latency;
+	stheta = arm_sin_f32(ydtheta);
+	ctheta = arm_cos_f32(ydtheta);
+	float ydata[3][3] = {{ctheta, 0.0f, stheta}, {0.0f, 1.0f, 0.0f}, {-stheta, 0.0f, ctheta}};
+	math::Matrix<3, 3> Ry(ydata);
 
-	math::Quaternion extq2;
-	extq2.set(_v_att.q);
-	extq2 += extq2.derivative(rates) * _params.pitch_latency;	/* pitch response latency estimate */
-	extq2.normalize();
+	float zdtheta = _v_att.yawspeed * _params.yaw_latency;
+	stheta = arm_sin_f32(zdtheta);
+	ctheta = arm_cos_f32(zdtheta);
+	float zdata[3][3] = {{ctheta, -stheta, 0.0f}, {stheta, ctheta, 0.0f}, {0.0f, 0.0f, 1.0f}};
+	math::Matrix<3, 3> Rz(zdata);
 
 	/* rotation matrix for projected state */
-	math::Matrix<3, 3> R(extq1.to_dcm());
+	math::Matrix<3, 3> R;
+	R = Rz * Ry * Rx * R_att;
 
 	/* all input data is ready, run controller itself */
 
@@ -696,6 +706,19 @@ MulticopterAttitudeControl::control_attitude(float dt)
 
 	/* calculate angular rates setpoint */
 	_rates_sp = _params.att_p.emult(e_R);
+
+//	/* if yaw rate is above threshold, rotate tilt command by 90 degrees */
+//	math::Matrix<3, 3> Rz;
+//	if (fabsf(_v_att.yawspeed) > 2.0f) {
+//		float zdtheta = 3.14159f / 2.0f;	// pi/2
+//		if (_v_att.yawspeed < 0.0f) zdtheta *= -1.0f;
+////		zdtheta += _v_att.yawspeed * _params.yaw_latency;
+//		float stheta = arm_sin_f32(zdtheta);
+//		float ctheta = arm_cos_f32(zdtheta);
+//		float zdata[3][3] = {{ctheta, -stheta, 0.0f}, {stheta, ctheta, 0.0f}, {0.0f, 0.0f, 1.0f}};
+//		Rz.set(zdata);
+//		_rates_sp = Rz * _rates_sp;
+//	}
 
 	/* limit rates */
 	for (int i = 0; i < 3; i++) {

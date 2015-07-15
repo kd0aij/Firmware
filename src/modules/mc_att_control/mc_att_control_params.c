@@ -239,7 +239,7 @@ PARAM_DEFINE_FLOAT(MC_PITCHRATE_MAX, 360.0f);
  * @max 360.0
  * @group Multicopter Attitude Control
  */
-PARAM_DEFINE_FLOAT(MC_YAWRATE_MAX, 120.0f);
+PARAM_DEFINE_FLOAT(MC_YAWRATE_MAX, 300.0f);
 
 /**
  * Max acro roll rate
@@ -299,3 +299,13 @@ PARAM_DEFINE_FLOAT(MC_ROLL_LATENCY, 0.0f);
  * @group Multicopter Attitude Control
  */
 PARAM_DEFINE_FLOAT(MC_PITCH_LATENCY, 0.0f);
+
+/**
+ * Yaw angle response latency
+ *
+ * @unit seconds
+ * @min 0.0
+ * @max 1.0
+ * @group Multicopter Attitude Control
+ */
+PARAM_DEFINE_FLOAT(MC_YAW_LATENCY, 0.3f);

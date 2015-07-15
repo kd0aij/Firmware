@@ -1414,6 +1414,12 @@ MulticopterPositionControl::task_main()
 
 				/* rotate attitude setpoint such that forward is always East */
 				float theta = 1.5708f - _att.yaw;
+				/* compensate for gyroscopic reaction if yaw rate is high */
+				if (fabsf(_att.yawspeed) > 2.0f) {
+					float dtheta = 3.14159f / 2.0f;	// pi/2
+					if (_att.yawspeed < 0.0f) dtheta *= -1.0f;
+					theta -= dtheta;
+				}
 				float stheta = arm_sin_f32(theta);
 				float ctheta = arm_cos_f32(theta);
 				float rollPrime = _att_sp.roll_body * ctheta - _att_sp.pitch_body * stheta;
