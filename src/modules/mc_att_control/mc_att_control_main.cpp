@@ -612,38 +612,35 @@ MulticopterAttitudeControl::control_attitude(float dt)
 	R_sp.set(_v_att_sp.R_body);
 
 	/* rotation matrix for current state */
-//	math::Matrix<3, 3> R;
-//	R.set(_v_att.R);
-
 	math::Matrix<3, 3> R_att;
 	R_att.set(_v_att.R);
 
-	/* extrapolate current attitude to compensate for thrust latency */
-	float xdtheta = _v_att.rollspeed * _params.roll_latency;
-	float stheta = arm_sin_f32(xdtheta);
-	float ctheta = arm_cos_f32(xdtheta);
-	float xdata[3][3] = {{1.0f, 0.0f, 0.0f}, {0.0f, ctheta, -stheta}, {0.0f, stheta, ctheta}};
-	math::Matrix<3, 3> Rx(xdata);
-
-	float ydtheta = _v_att.pitchspeed * _params.pitch_latency;
-	stheta = arm_sin_f32(ydtheta);
-	ctheta = arm_cos_f32(ydtheta);
-	float ydata[3][3] = {{ctheta, 0.0f, stheta}, {0.0f, 1.0f, 0.0f}, {-stheta, 0.0f, ctheta}};
-	math::Matrix<3, 3> Ry(ydata);
-
+//	/* extrapolate current attitude to compensate for thrust latency */
+//	float xdtheta = _v_att.rollspeed * _params.roll_latency;
+//	float stheta = arm_sin_f32(xdtheta);
+//	float ctheta = arm_cos_f32(xdtheta);
+//	float xdata[3][3] = {{1.0f, 0.0f, 0.0f}, {0.0f, ctheta, -stheta}, {0.0f, stheta, ctheta}};
+//	math::Matrix<3, 3> Rx(xdata);
+//
+//	float ydtheta = _v_att.pitchspeed * _params.pitch_latency;
+//	stheta = arm_sin_f32(ydtheta);
+//	ctheta = arm_cos_f32(ydtheta);
+//	float ydata[3][3] = {{ctheta, 0.0f, stheta}, {0.0f, 1.0f, 0.0f}, {-stheta, 0.0f, ctheta}};
+//	math::Matrix<3, 3> Ry(ydata);
+//
 	float zdtheta = _v_att.yawspeed * _params.yaw_latency;
-	stheta = arm_sin_f32(zdtheta);
-	ctheta = arm_cos_f32(zdtheta);
+	float stheta = arm_sin_f32(zdtheta);
+	float ctheta = arm_cos_f32(zdtheta);
 	float zdata[3][3] = {{ctheta, -stheta, 0.0f}, {stheta, ctheta, 0.0f}, {0.0f, 0.0f, 1.0f}};
 	math::Matrix<3, 3> Rz(zdata);
 
 	/* rotation matrix for projected state */
 	math::Matrix<3, 3> R;
-	R = Rz * Ry * Rx * R_att;
+	R = Rz * R_att;
 
 	/* all input data is ready, run controller itself */
 
-	/* try to move thrust vector shortest way, because yaw response is slower than roll/pitch */
+	/* control earth frame roll/pitch angle and body frame yaw rate */
 	math::Vector<3> R_z(R(0, 2), R(1, 2), R(2, 2));
 	math::Vector<3> R_sp_z(R_sp(0, 2), R_sp(1, 2), R_sp(2, 2));
 
@@ -654,12 +651,6 @@ MulticopterAttitudeControl::control_attitude(float dt)
 	float e_R_z_sin = e_R.length();
 	float e_R_z_cos = R_z * R_sp_z;
 
-	/* calculate weight for yaw control */
-	float yaw_w = R_sp(2, 2) * R_sp(2, 2);
-
-	/* calculate rotation matrix after roll/pitch only rotation */
-	math::Matrix<3, 3> R_rp;
-
 	if (e_R_z_sin > 0.0f) {
 		/* get axis-angle representation */
 		float e_R_z_angle = atan2f(e_R_z_sin, e_R_z_cos);
@@ -667,45 +658,14 @@ MulticopterAttitudeControl::control_attitude(float dt)
 
 		e_R = e_R_z_axis * e_R_z_angle;
 
-		/* cross product matrix for e_R_axis */
-		math::Matrix<3, 3> e_R_cp;
-		e_R_cp.zero();
-		e_R_cp(0, 1) = -e_R_z_axis(2);
-		e_R_cp(0, 2) = e_R_z_axis(1);
-		e_R_cp(1, 0) = e_R_z_axis(2);
-		e_R_cp(1, 2) = -e_R_z_axis(0);
-		e_R_cp(2, 0) = -e_R_z_axis(1);
-		e_R_cp(2, 1) = e_R_z_axis(0);
-
-		/* rotation matrix for roll/pitch only rotation */
-		R_rp = R * (_I + e_R_cp * e_R_z_sin + e_R_cp * e_R_cp * (1.0f - e_R_z_cos));
+		/* calculate angular rates setpoint */
+		_rates_sp = _params.att_p.emult(e_R);
 
 	} else {
 		/* zero roll/pitch rotation */
-		R_rp = R;
+		_rates_sp(0) = 0.0f;
+		_rates_sp(1) = 0.0f;
 	}
-
-	/* R_rp and R_sp has the same Z axis, calculate yaw error */
-	math::Vector<3> R_sp_x(R_sp(0, 0), R_sp(1, 0), R_sp(2, 0));
-	math::Vector<3> R_rp_x(R_rp(0, 0), R_rp(1, 0), R_rp(2, 0));
-	e_R(2) = atan2f((R_rp_x % R_sp_x) * R_sp_z, R_rp_x * R_sp_x) * yaw_w;
-
-	if (e_R_z_cos < 0.0f) {
-		/* for large thrust vector rotations use another rotation method:
-		 * calculate angle and axis for R -> R_sp rotation directly */
-		math::Quaternion q;
-		q.from_dcm(R.transposed() * R_sp);
-		math::Vector<3> e_R_d = q.imag();
-		e_R_d.normalize();
-		e_R_d *= 2.0f * atan2f(e_R_d.length(), q(0));
-
-		/* use fusion of Z axis based rotation and direct rotation */
-		float direct_w = e_R_z_cos * e_R_z_cos * yaw_w;
-		e_R = e_R * (1.0f - direct_w) + e_R_d * direct_w;
-	}
-
-	/* calculate angular rates setpoint */
-	_rates_sp = _params.att_p.emult(e_R);
 
 //	/* if yaw rate is above threshold, rotate tilt command by 90 degrees */
 //	math::Matrix<3, 3> Rz;
@@ -725,8 +685,8 @@ MulticopterAttitudeControl::control_attitude(float dt)
 		_rates_sp(i) = math::constrain(_rates_sp(i), -_params.mc_rate_max(i), _params.mc_rate_max(i));
 	}
 
-	/* feed forward yaw setpoint rate */
-	_rates_sp(2) += _v_att_sp.yaw_sp_move_rate * yaw_w * _params.yaw_ff;
+//	/* feed forward yaw setpoint rate */
+//	_rates_sp(2) += _v_att_sp.yaw_sp_move_rate * yaw_w * _params.yaw_ff;
 }
 
 /*
@@ -801,6 +761,8 @@ MulticopterAttitudeControl::task_main()
 	fds[0].fd = _v_att_sub;
 	fds[0].events = POLLIN;
 
+	static int pcnt = 0;
+
 	while (!_task_should_exit) {
 
 		/* wait for up to 100ms for data */
@@ -865,9 +827,23 @@ MulticopterAttitudeControl::task_main()
 				/* publish attitude rates setpoint */
 				_v_rates_sp.roll = _rates_sp(0);
 				_v_rates_sp.pitch = _rates_sp(1);
+				/* force rate control for yaw */
+				if (_manual_control_sp.r > 0.2f) {
+					_rates_sp(2) = _manual_control_sp.r * _params.acro_rate_max(2);
+					_rates_sp(2) = 300 * (3.14159 / 180);
+				} else {
+					_rates_sp(2) = 0.0f;
+				}
 				_v_rates_sp.yaw = _rates_sp(2);
 				_v_rates_sp.thrust = _thrust_sp;
 				_v_rates_sp.timestamp = hrt_absolute_time();
+
+				if (pcnt++ > 99) {
+					warnx("rateSP: %5.3f, %5.3f, %5.3f, manual:  %5.3f, %5.3f, %5.3f",
+							(double)_v_rates_sp.roll, (double)_v_rates_sp.pitch, (double)_v_rates_sp.yaw,
+							(double)_manual_control_sp.x, (double)_manual_control_sp.y, (double)_manual_control_sp.r);
+					pcnt = 0;
+				}
 
 				if (_v_rates_sp_pub > 0) {
 					orb_publish(_rates_sp_id, _v_rates_sp_pub, &_v_rates_sp);
