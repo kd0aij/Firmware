@@ -128,6 +128,7 @@ int Simulator::start(int argc, char *argv[])
 		PX4_WARN("Simulator creation failed");
 		ret = 1;
 	}
+
 	return ret;
 }
 
@@ -163,6 +164,15 @@ int simulator_main(int argc, char *argv[])
 				1500,
 				Simulator::start,
 				argv);
+
+			// now wait for the command to complete
+			while(true) {
+				if (Simulator::getInstance() && Simulator::getInstance()->isInitialized()) {
+					break;
+				} else {
+					usleep(100000);
+				}
+			}
 		}
 		else
 		{

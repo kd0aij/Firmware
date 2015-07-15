@@ -1,8 +1,6 @@
 /****************************************************************************
  *
- *   Copyright (C) 2013 PX4 Development Team. All rights reserved.
- *   Author: Hyon Lim <limhyon@gmail.com>
- *           Anton Babushkin <anton.babushkin@me.com>
+ *   Copyright (c) 2015 PX4 Development Team. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -33,35 +31,59 @@
  *
  ****************************************************************************/
 
-/*
- * @file attitude_estimator_so3_params.h
+/**
+ * @file camera_trigger_params.c
+ * Camera trigger parameters
  *
- * Parameters for nonlinear complementary filters on the SO(3).
+ * @author Mohammed Kabir <mhkabir98@gmail.com>
  */
 
+#include <nuttx/config.h>
 #include <systemlib/param/param.h>
 
-struct attitude_estimator_so3_params {
-	float Kp;
-	float Ki;
-	float roll_off;
-	float pitch_off;
-	float yaw_off;
-};
-
-struct attitude_estimator_so3_param_handles {
-	param_t Kp, Ki;
-	param_t roll_off, pitch_off, yaw_off;
-};
+/**
+ * Camera trigger shutter integration time
+ *
+ * This parameter sets the time the shutter is open on the camera.
+ *
+ * @unit milliseconds
+ * @min 0.0
+ * @max 500.0
+ * @group Camera trigger
+ */
+PARAM_DEFINE_FLOAT(TRIG_INT_TIME, 300.0f);
 
 /**
- * Initialize all parameter handles and values
+ * Camera trigger transfer time
  *
+ * This parameter sets the time the image transfer takes (PointGrey mode_0)
+ *
+ * @unit milliseconds
+ * @min 15.0
+ * @max 33.0
+ * @group Camera trigger
  */
-int parameters_init(struct attitude_estimator_so3_param_handles *h);
+PARAM_DEFINE_FLOAT(TRIG_TRANS_TIME, 15.0f);
 
 /**
- * Update all parameters
+ * Camera trigger polarity
  *
+ * This parameter sets the polarity of the trigger (0 = ACTIVE_LOW, 1 = ACTIVE_HIGH )
+ *
+ * @min 0
+ * @max 1
+ * @group Camera trigger
  */
-int parameters_update(const struct attitude_estimator_so3_param_handles *h, struct attitude_estimator_so3_params *p);
+PARAM_DEFINE_INT32(TRIG_POLARITY, 0);
+
+/**
+ * Camera trigger activation time
+ *
+ * This parameter sets the time the trigger needs to pulled high or low to start light 
+ * integration.
+ *
+ * @unit milliseconds
+ * @default 4.0 ms
+ * @group Camera trigger
+ */
+PARAM_DEFINE_FLOAT(TRIG_ACT_TIME, 5.0f);

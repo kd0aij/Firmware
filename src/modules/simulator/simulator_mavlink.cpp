@@ -40,6 +40,8 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 
+extern "C" __EXPORT hrt_abstime hrt_reset(void);
+
 #define SEND_INTERVAL 	20
 #define UDP_PORT 	14560
 #define PIXHAWK_DEVICE "/dev/ttyACM0"
@@ -400,10 +402,14 @@ void Simulator::pollForMAVLinkMessages(bool publish)
 	// wait for first data from simulator and respond with first controls
 	// this is important for the UDP communication to work
 	int pret = -1;
+	PX4_WARN("Waiting for initial data on UDP.. Please connect the simulator first.");
 	while (pret <= 0) {
 		pret = ::poll(&fds[0], (sizeof(fds[0])/sizeof(fds[0])), 100);
 	}
 	PX4_WARN("Found initial message, pret = %d",pret);
+	_initialized = true;
+	// reset system time
+	(void)hrt_reset();
 
 	if (fds[0].revents & POLLIN) {
 		len = recvfrom(_fd, _buf, sizeof(_buf), 0, (struct sockaddr *)&_srcaddr, &_addrlen);
@@ -535,9 +541,9 @@ int openUart(const char *uart_name, int baud)
 
 	/* Try to set baud rate */
 	struct termios uart_config;
-    memset(&uart_config, 0, sizeof(uart_config));
+	memset(&uart_config, 0, sizeof(uart_config));
 
-    int termios_state;
+	int termios_state;
 
 	/* Back up the original uart configuration to restore it after exit */
 	if ((termios_state = tcgetattr(uart_fd, &uart_config)) < 0) {
