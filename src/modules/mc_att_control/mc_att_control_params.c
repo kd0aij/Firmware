@@ -239,7 +239,7 @@ PARAM_DEFINE_FLOAT(MC_PITCHRATE_MAX, 360.0f);
  * @max 360.0
  * @group Multicopter Attitude Control
  */
-PARAM_DEFINE_FLOAT(MC_YAWRATE_MAX, 120.0f);
+PARAM_DEFINE_FLOAT(MC_YAWRATE_MAX, 300.0f);
 
 /**
  * Max acro roll rate
@@ -249,7 +249,7 @@ PARAM_DEFINE_FLOAT(MC_YAWRATE_MAX, 120.0f);
  * @max 360.0
  * @group Multicopter Attitude Control
  */
-PARAM_DEFINE_FLOAT(MC_ACRO_R_MAX, 90.0f);
+PARAM_DEFINE_FLOAT(MC_ACRO_R_MAX, 360.0f);
 
 /**
  * Max acro pitch rate
@@ -259,7 +259,7 @@ PARAM_DEFINE_FLOAT(MC_ACRO_R_MAX, 90.0f);
  * @max 360.0
  * @group Multicopter Attitude Control
  */
-PARAM_DEFINE_FLOAT(MC_ACRO_P_MAX, 90.0f);
+PARAM_DEFINE_FLOAT(MC_ACRO_P_MAX, 360.0f);
 
 /**
  * Max acro yaw rate
@@ -268,4 +268,44 @@ PARAM_DEFINE_FLOAT(MC_ACRO_P_MAX, 90.0f);
  * @min 0.0
  * @group Multicopter Attitude Control
  */
-PARAM_DEFINE_FLOAT(MC_ACRO_Y_MAX, 120.0f);
+PARAM_DEFINE_FLOAT(MC_ACRO_Y_MAX, 360.0f);
+
+/**
+ * Roll/Pitch stick deflection magnitude required to activate rate control in ACRO mode
+ *
+ * @unit dimensionless
+ * @min 0.0
+ * @max 1.0
+ * @group Multicopter Attitude Control
+ */
+PARAM_DEFINE_FLOAT(MC_ACRO_STAB, 0.0f);
+
+/**
+ * Roll angle response latency
+ *
+ * @unit seconds
+ * @min 0.0
+ * @max 1.0
+ * @group Multicopter Attitude Control
+ */
+PARAM_DEFINE_FLOAT(MC_ROLL_LATENCY, 0.0f);
+
+/**
+ * Pitch angle response latency
+ *
+ * @unit seconds
+ * @min 0.0
+ * @max 1.0
+ * @group Multicopter Attitude Control
+ */
+PARAM_DEFINE_FLOAT(MC_PITCH_LATENCY, 0.0f);
+
+/**
+ * Yaw angle response latency
+ *
+ * @unit seconds
+ * @min 0.0
+ * @max 1.0
+ * @group Multicopter Attitude Control
+ */
+PARAM_DEFINE_FLOAT(MC_YAW_LATENCY, 0.3f);
