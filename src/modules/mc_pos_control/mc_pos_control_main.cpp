@@ -1423,8 +1423,8 @@ MulticopterPositionControl::task_main()
 					if (_att.yawspeed < 0.0f) dtheta *= -1.0f;
 					theta -= dtheta;
 				}
-				float stheta = arm_sin_f32(theta);
-				float ctheta = arm_cos_f32(theta);
+				float stheta = sinf(theta);
+				float ctheta = cosf(theta);
 				float rollPrime = _att_sp.roll_body * ctheta - _att_sp.pitch_body * stheta;
 				float pitchPrime = _att_sp.roll_body * stheta + _att_sp.pitch_body * ctheta;
 

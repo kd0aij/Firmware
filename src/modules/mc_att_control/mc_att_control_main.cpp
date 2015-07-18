@@ -640,20 +640,20 @@ MulticopterAttitudeControl::control_attitude(float dt)
 
 //	/* extrapolate current attitude to compensate for thrust latency */
 //	float xdtheta = _v_att.rollspeed * _params.roll_latency;
-//	float stheta = arm_sin_f32(xdtheta);
-//	float ctheta = arm_cos_f32(xdtheta);
+//	float stheta = sinf(xdtheta);
+//	float ctheta = cosf(xdtheta);
 //	float xdata[3][3] = {{1.0f, 0.0f, 0.0f}, {0.0f, ctheta, -stheta}, {0.0f, stheta, ctheta}};
 //	math::Matrix<3, 3> Rx(xdata);
 //
 //	float ydtheta = _v_att.pitchspeed * _params.pitch_latency;
-//	stheta = arm_sin_f32(ydtheta);
-//	ctheta = arm_cos_f32(ydtheta);
+//	stheta = sinf(ydtheta);
+//	ctheta = cosf(ydtheta);
 //	float ydata[3][3] = {{ctheta, 0.0f, stheta}, {0.0f, 1.0f, 0.0f}, {-stheta, 0.0f, ctheta}};
 //	math::Matrix<3, 3> Ry(ydata);
 //
 	float zdtheta = _v_att.yawspeed * _params.yaw_latency;
-	float stheta = arm_sin_f32(zdtheta);
-	float ctheta = arm_cos_f32(zdtheta);
+	float stheta = sinf(zdtheta);
+	float ctheta = cosf(zdtheta);
 	float zdata[3][3] = {{ctheta, -stheta, 0.0f}, {stheta, ctheta, 0.0f}, {0.0f, 0.0f, 1.0f}};
 	math::Matrix<3, 3> Rz(zdata);
 
@@ -696,8 +696,8 @@ MulticopterAttitudeControl::control_attitude(float dt)
 //		float zdtheta = 3.14159f / 2.0f;	// pi/2
 //		if (_v_att.yawspeed < 0.0f) zdtheta *= -1.0f;
 ////		zdtheta += _v_att.yawspeed * _params.yaw_latency;
-//		float stheta = arm_sin_f32(zdtheta);
-//		float ctheta = arm_cos_f32(zdtheta);
+//		float stheta = sinf(zdtheta);
+//		float ctheta = cosf(zdtheta);
 //		float zdata[3][3] = {{ctheta, -stheta, 0.0f}, {stheta, ctheta, 0.0f}, {0.0f, 0.0f, 1.0f}};
 //		Rz.set(zdata);
 //		_rates_sp = Rz * _rates_sp;
@@ -708,8 +708,9 @@ MulticopterAttitudeControl::control_attitude(float dt)
 		_rates_sp(i) = math::constrain(_rates_sp(i), -_params.mc_rate_max(i), _params.mc_rate_max(i));
 	}
 
-//	/* feed forward yaw setpoint rate */
-//	_rates_sp(2) += _v_att_sp.yaw_sp_move_rate * yaw_w * _params.yaw_ff;
+	// yaw rate SP is currently overridden if flag_control_attitude_enabled
+	/* feed forward yaw setpoint rate */
+	_rates_sp(2) += _v_att_sp.yaw_sp_move_rate * yaw_w * _params.yaw_ff;
 }
 
 /*
@@ -850,8 +851,9 @@ MulticopterAttitudeControl::task_main()
 				/* publish attitude rates setpoint */
 				_v_rates_sp.roll = _rates_sp(0);
 				_v_rates_sp.pitch = _rates_sp(1);
-				/* force rate control for yaw */
-				if (_manual_control_sp.r > 0.2f) {
+
+				/* force rate control for yaw, clamp to 300 deg/sec above half stick */
+				if (fabsf(_manual_control_sp.r) > 0.5f) {
 					_rates_sp(2) = _manual_control_sp.r * _params.acro_rate_max(2);
 					_rates_sp(2) = 300 * (3.14159 / 180);
 				} else {
