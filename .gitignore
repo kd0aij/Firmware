@@ -10,7 +10,6 @@
 .context
 .DS_Store
 .gdbinit
-.settings
 .swp
 .~lock.*
 Archives/*
