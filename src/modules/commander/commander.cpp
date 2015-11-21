@@ -362,6 +362,8 @@ int commander_main(int argc, char *argv[])
 				calib_ret = do_level_calibration(mavlink_fd);
 			} else if (!strcmp(argv[2], "esc")) {
 				calib_ret = do_esc_calibration(mavlink_fd, &armed);
+			} else if (!strcmp(argv[2], "airspeed")) {
+				calib_ret = do_airspeed_calibration(mavlink_fd);
 			} else {
 				warnx("argument %s unsupported.", argv[2]);
 			}
@@ -1699,10 +1701,10 @@ int commander_thread_main(int argc, char *argv[])
 				status_changed = true;
 
 				if (status.condition_landed) {
-					mavlink_log_critical(mavlink_fd, "LANDING DETECTED");
+					mavlink_and_console_log_info(mavlink_fd, "LANDING DETECTED");
 
 				} else {
-					mavlink_log_critical(mavlink_fd, "TAKEOFF DETECTED");
+					mavlink_and_console_log_info(mavlink_fd, "TAKEOFF DETECTED");
 				}
 			}
 

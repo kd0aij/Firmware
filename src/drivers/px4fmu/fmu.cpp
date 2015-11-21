@@ -98,6 +98,7 @@ public:
 	enum Mode {
 		MODE_NONE,
 		MODE_2PWM,
+		MODE_3PWM,
 		MODE_4PWM,
 		MODE_6PWM,
 		MODE_8PWM,
@@ -382,6 +383,20 @@ PX4FMU::set_mode(Mode mode)
 
 		/* XXX magic numbers */
 		up_pwm_servo_init(0x3);
+		set_pwm_rate(_pwm_alt_rate_channels, _pwm_default_rate, _pwm_alt_rate);
+
+		break;
+
+	case MODE_3PWM: // AUAV-X2 multi-port as 3 PWM outs
+		DEVICE_DEBUG("MODE_3PWM");
+
+		/* default output rates */
+		_pwm_default_rate = 50;
+		_pwm_alt_rate = 50;
+		_pwm_alt_rate_channels = 0;
+
+		/* XXX magic numbers */
+		up_pwm_servo_init(0x7);
 		set_pwm_rate(_pwm_alt_rate_channels, _pwm_default_rate, _pwm_alt_rate);
 
 		break;
@@ -701,6 +716,10 @@ PX4FMU::cycle()
 				num_outputs = 2;
 				break;
 
+			case MODE_3PWM:
+				num_outputs = 3;
+				break;
+
 			case MODE_4PWM:
 				num_outputs = 4;
 				break;
@@ -895,6 +914,7 @@ PX4FMU::ioctl(file *filp, int cmd, unsigned long arg)
 	/* if we are in valid PWM mode, try it as a PWM ioctl as well */
 	switch (_mode) {
 	case MODE_2PWM:
+	case MODE_3PWM:
 	case MODE_4PWM:
 	case MODE_6PWM:
 #ifdef CONFIG_ARCH_BOARD_AEROCORE
@@ -1153,8 +1173,13 @@ PX4FMU::pwm_ioctl(file *filp, int cmd, unsigned long arg)
 
 	/* FALLTHROUGH */
 	case PWM_SERVO_SET(3):
-	case PWM_SERVO_SET(2):
 		if (_mode < MODE_4PWM) {
+			ret = -EINVAL;
+			break;
+		}
+
+	case PWM_SERVO_SET(2):
+		if (_mode < MODE_3PWM) {
 			ret = -EINVAL;
 			break;
 		}
@@ -1234,6 +1259,10 @@ PX4FMU::pwm_ioctl(file *filp, int cmd, unsigned long arg)
 			*(unsigned *)arg = 4;
 			break;
 
+		case MODE_3PWM:
+			*(unsigned *)arg = 3;
+			break;
+
 		case MODE_2PWM:
 			*(unsigned *)arg = 2;
 			break;
@@ -1260,6 +1289,10 @@ PX4FMU::pwm_ioctl(file *filp, int cmd, unsigned long arg)
 
 			case 2:
 				set_mode(MODE_2PWM);
+				break;
+
+			case 3:
+				set_mode(MODE_3PWM);
 				break;
 
 			case 4:
@@ -1469,6 +1502,10 @@ PX4FMU::sensor_reset(int ms)
 	stm32_gpiowrite(GPIO_SPI_CS_BARO, 1);
 	stm32_gpiowrite(GPIO_SPI_CS_MPU, 1);
 
+	stm32_configgpio(GPIO_SPI1_SCK);
+	stm32_configgpio(GPIO_SPI1_MISO);
+	stm32_configgpio(GPIO_SPI1_MOSI);
+
 	// // XXX bring up the EXTI pins again
 	// stm32_configgpio(GPIO_GYRO_DRDY);
 	// stm32_configgpio(GPIO_MAG_DRDY);
@@ -1664,6 +1701,7 @@ enum PortMode {
 	PORT_GPIO_AND_SERIAL,
 	PORT_PWM_AND_SERIAL,
 	PORT_PWM_AND_GPIO,
+	PORT_PWM3,
 	PORT_PWM4,
 };
 
@@ -1701,6 +1739,11 @@ fmu_new_mode(PortMode new_mode)
 		break;
 
 #if defined(CONFIG_ARCH_BOARD_PX4FMU_V2)
+
+	case PORT_PWM3:
+		/* select 3-pin PWM mode */
+		servo_mode = PX4FMU::MODE_3PWM;
+		break;
 
 	case PORT_PWM4:
 		/* select 4-pin PWM mode */
@@ -2010,6 +2053,9 @@ fmu_main(int argc, char *argv[])
 
 #if defined(CONFIG_ARCH_BOARD_PX4FMU_V2)
 
+	} else if (!strcmp(verb, "mode_pwm3")) {
+		new_mode = PORT_PWM3;
+
 	} else if (!strcmp(verb, "mode_pwm4")) {
 		new_mode = PORT_PWM4;
 #endif
@@ -2098,7 +2144,7 @@ fmu_main(int argc, char *argv[])
 	fprintf(stderr,
 		"  mode_gpio, mode_serial, mode_pwm, mode_gpio_serial, mode_pwm_serial, mode_pwm_gpio, test, fake, sensor_reset, id\n");
 #elif defined(CONFIG_ARCH_BOARD_PX4FMU_V2) || defined(CONFIG_ARCH_BOARD_AEROCORE)
-	fprintf(stderr, "  mode_gpio, mode_pwm, mode_pwm4, test, sensor_reset [milliseconds], i2c <bus> <hz>\n");
+	fprintf(stderr, "  mode_gpio, mode_pwm, mode_pwm3, mode_pwm4, test, sensor_reset [milliseconds], i2c <bus> <hz>\n");
 #endif
 	exit(1);
 }
