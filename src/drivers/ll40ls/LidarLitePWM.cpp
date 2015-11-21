@@ -183,7 +183,7 @@ int LidarLitePWM::measure()
 	_range.type = distance_sensor_s::MAV_DISTANCE_SENSOR_LASER;
 	_range.max_distance = get_maximum_distance();
 	_range.min_distance = get_minimum_distance();
-	_range.current_distance = float(_pwm.pulse_width) * 1e-3f;   /* 10 usec = 1 cm distance for LIDAR-Lite */
+	_range.current_distance = float(_pwm.pulse_width) * 1e-3f;   /* .001 m/usec for LIDAR-Lite */
 	_range.covariance = 0.0f;
 	_range.orientation = 8;
 	/* TODO: set proper ID */
@@ -195,6 +195,18 @@ int LidarLitePWM::measure()
 		perf_end(_sample_perf);
 		return reset_sensor();
 	}
+
+	uint64_t period = _range.timestamp - _lastTimeStamp;
+
+	// for distances near zero and > 40m, no PWM pulse is generated
+	// At 40m AGL, the PWM pulse will be 40msec long, and the period will be only slightly longer
+	// use 50msec as a conservative maximum for the pulse period
+	if (period > LL40LS_CONVERSION_INTERVAL) {
+		// report an invalid range of 0m, to avoid glitches on takeoff
+		_range.current_distance = 0.0f;
+	}
+
+	_lastTimeStamp = _range.timestamp;
 
 	if (_distance_sensor_topic != nullptr) {
 		orb_publish(ORB_ID(distance_sensor), _distance_sensor_topic, &_range);
