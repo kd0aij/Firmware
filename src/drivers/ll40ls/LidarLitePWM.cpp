@@ -196,6 +196,18 @@ int LidarLitePWM::measure()
 		return reset_sensor();
 	}
 
+	uint64_t period = _range.timestamp - _lastTimeStamp;
+
+	// for distances near zero and > 40m, no PWM pulse is generated
+	// At 40m AGL, the PWM pulse will be 40msec long, and the period will be only slightly longer
+	// use 50msec as a conservative maximum for the pulse period
+	if (period > LL40LS_CONVERSION_INTERVAL) {
+		// report an invalid range of 0m, to avoid glitches on takeoff
+		_range.current_distance = 0.0f;
+	}
+
+	_lastTimeStamp = _range.timestamp;
+
 	if (_distance_sensor_topic != nullptr) {
 		orb_publish(ORB_ID(distance_sensor), _distance_sensor_topic, &_range);
 	}
