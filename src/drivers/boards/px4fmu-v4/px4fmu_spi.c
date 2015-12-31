@@ -113,14 +113,6 @@ __EXPORT void stm32_spi1select(FAR struct spi_dev_s *dev, enum spi_dev_e devid, 
 		/* Making sure the other peripherals are not selected */
 		break;
 
-	case PX4_SPIDEV_BARO:
-		/* Making sure the other peripherals are not selected */
-		stm32_gpiowrite(GPIO_SPI_CS_MPU9250, 1);
-		stm32_gpiowrite(GPIO_SPI_CS_HMC5983, 1);
-		stm32_gpiowrite(GPIO_SPI_CS_MS5611, !selected);
-		stm32_gpiowrite(GPIO_SPI_CS_ICM_20608_G, 1);
-		break;
-
 	case PX4_SPIDEV_HMC:
 		/* Making sure the other peripherals are not selected */
 		stm32_gpiowrite(GPIO_SPI_CS_MPU9250, 1);
@@ -160,7 +152,7 @@ __EXPORT void stm32_spi2select(FAR struct spi_dev_s *dev, enum spi_dev_e devid, 
 		stm32_gpiowrite(GPIO_SPI_CS_FRAM, !selected);
 		break;
 
-	case PX4_SPIDEV_BARO:
+    case PX4_SPI2DEV_BARO:
 		/* Making sure the other peripherals are not selected */
 		stm32_gpiowrite(GPIO_SPI_CS_FRAM, 1);
 		stm32_gpiowrite(GPIO_SPI_CS_MS5611, !selected);

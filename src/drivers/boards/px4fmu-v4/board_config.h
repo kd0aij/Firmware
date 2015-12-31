@@ -34,7 +34,7 @@
 /**
  * @file board_config.h
  *
- * PX4FMUv2 internal definitions
+ * PX4FMUv4 internal definitions
  */
 
 #pragma once
@@ -132,7 +132,7 @@ __BEGIN_DECLS
  * spi_dev_e:SPIDEV_FLASH has the value 2 and is used in the NuttX ramtron driver
  * use 3 for the barometer to differentiate
  */
-#define PX4_SPIDEV_BARO			3
+#define PX4_SPI2DEV_BARO		3
 
 /* I2C busses */
 #define PX4_I2C_BUS_EXPANSION	1
