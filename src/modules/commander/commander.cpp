@@ -2249,7 +2249,9 @@ int commander_thread_main(int argc, char *argv[])
 			if (sp_man.kill_switch == manual_control_setpoint_s::SWITCH_POS_ON) {
 				/* set lockdown flag */
 				armed.lockdown = true;
-			}
+            } else {
+                armed.lockdown = false;
+            }
 
 			if (sp_man.kill_switch == manual_control_setpoint_s::SWITCH_POS_ON &&
 				prev_lockdown != armed.lockdown) {
