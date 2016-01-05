@@ -119,6 +119,14 @@ public:
 	int		set_i2c_bus_clock(unsigned bus, unsigned clock_hz);
 
 private:
+	enum RC_SCAN {
+		RC_SCAN_PPM = 0,
+		RC_SCAN_SBUS,
+		RC_SCAN_DSM,
+		RC_SCAN_SUMD,
+		RC_SCAN_ST24
+	};
+
 	static const unsigned _max_actuators = DIRECT_PWM_OUTPUT_CHANNELS;
 
 	Mode		_mode;
@@ -639,8 +647,39 @@ PX4FMU::cycle()
 		// XXX rather than opening it we need to cycle between protocols until one is locked in
 		//_dsm_fd = dsm_init(DSM_SERIAL_PORT);
 #endif
+		uint64_t rc_scan_last_lock = 0;
+		uint64_t rc_scan_begin = 0;
+		bool rc_scan_locked = false;
+		enum RC_SCAN _rc_scan_state = RC_SCAN_PPM;
 
-		_initialized = true;
+		// Scan for one second, then switch protocol
+		constexpr uint64_t rc_scan_max = 1000 * 1000;
+
+		switch (_rc_scan_state) {
+		case RC_SCAN_SBUS:
+			if (rc_scan_begin == 0) {
+				rc_scan_begin = hrt_absolute_time();
+				// Configure S.BUS port
+			stm32_gpio, etc.
+		} else if (hrt_absolute_time() - rc_scan_last_lock < rc_scan_max
+				|| hrt_absolute_time() - rc_scan_begin < rc_scan_max) {
+			// read port
+			if (read_success) {
+				rc_scan_last_lock = hrt_absolute_time();
+			} else {
+				// This triggers the port re-configuration
+				rc_scan_begin = 0;
+				// This selects the next protocol to be scanned
+				_rc_scan_state++;
+			}
+
+			case RC_SCAN_ST24:
+			// If scan interval exceeded (else case)
+			rc_scan_begin = 0;
+			_rc_scan_state = RC_SCAN_PPM; // go back to first entry in scan list
+		}
+
+		  _initialized = true;
 	}
 
 
