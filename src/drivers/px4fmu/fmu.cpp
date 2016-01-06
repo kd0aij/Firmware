@@ -120,8 +120,7 @@ public:
 
 private:
 	enum RC_SCAN {
-		RC_SCAN_PPM = 0,
-		RC_SCAN_SBUS,
+		RC_SCAN_SBUS = 0,
 		RC_SCAN_DSM,
 		RC_SCAN_SUMD,
 		RC_SCAN_ST24
@@ -207,6 +206,8 @@ private:
 	/* do not allow to copy due to ptr data members */
 	PX4FMU(const PX4FMU &);
 	PX4FMU operator=(const PX4FMU &);
+
+	void dprint(const char*);
 };
 
 const PX4FMU::GPIOConfig PX4FMU::_gpio_tab[] = {
@@ -328,6 +329,7 @@ PX4FMU::PX4FMU() :
 
 	/* only enable this during development */
 	_debug_enabled = false;
+	void dprint(char*);
 }
 
 PX4FMU::~PX4FMU()
@@ -621,6 +623,14 @@ PX4FMU::cycle_trampoline(void *arg)
 	dev->cycle();
 }
 
+void PX4FMU::dprint(const char *str) {
+	static hrt_abstime then = 0;
+	if (hrt_elapsed_time(&then) > 1000*1000) {
+		then = hrt_absolute_time();
+		warnx(str);
+	}
+}
+
 void
 PX4FMU::cycle()
 {
@@ -647,41 +657,9 @@ PX4FMU::cycle()
 		// XXX rather than opening it we need to cycle between protocols until one is locked in
 		//_dsm_fd = dsm_init(DSM_SERIAL_PORT);
 #endif
-		uint64_t rc_scan_last_lock = 0;
-		uint64_t rc_scan_begin = 0;
-		bool rc_scan_locked = false;
-		enum RC_SCAN _rc_scan_state = RC_SCAN_PPM;
-
-		// Scan for one second, then switch protocol
-		constexpr uint64_t rc_scan_max = 1000 * 1000;
-
-		switch (_rc_scan_state) {
-		case RC_SCAN_SBUS:
-			if (rc_scan_begin == 0) {
-				rc_scan_begin = hrt_absolute_time();
-				// Configure S.BUS port
-			stm32_gpio, etc.
-		} else if (hrt_absolute_time() - rc_scan_last_lock < rc_scan_max
-				|| hrt_absolute_time() - rc_scan_begin < rc_scan_max) {
-			// read port
-			if (read_success) {
-				rc_scan_last_lock = hrt_absolute_time();
-			} else {
-				// This triggers the port re-configuration
-				rc_scan_begin = 0;
-				// This selects the next protocol to be scanned
-				_rc_scan_state++;
-			}
-
-			case RC_SCAN_ST24:
-			// If scan interval exceeded (else case)
-			rc_scan_begin = 0;
-			_rc_scan_state = RC_SCAN_PPM; // go back to first entry in scan list
-		}
 
 		  _initialized = true;
 	}
-
 
 	if (_groups_subscribed != _groups_required) {
 		subscribe();
@@ -855,66 +833,116 @@ PX4FMU::cycle()
 	bool rc_updated = false;
 
 #ifdef SBUS_SERIAL_PORT
-	bool sbus_failsafe, sbus_frame_drop;
-	uint16_t raw_rc_values[input_rc_s::RC_INPUT_MAX_CHANNELS];
-	uint16_t raw_rc_count;
-	bool sbus_updated = sbus_input(_sbus_fd, &raw_rc_values[0], &raw_rc_count, &sbus_failsafe, &sbus_frame_drop,
-				       input_rc_s::RC_INPUT_MAX_CHANNELS);
+	// This block scans for a supported serial RC input and locks onto the first one found
+	static hrt_abstime rc_scan_last_lock = 0;
+	static hrt_abstime rc_scan_begin = 0;
+	static bool rc_scan_locked = false;
+	enum RC_SCAN _rc_scan_state = RC_SCAN_SBUS;
 
-	if (sbus_updated) {
-		// we have a new PPM frame. Publish it.
-		_rc_in.channel_count = raw_rc_count;
+	// Scan for one second, then switch protocol
+	constexpr hrt_abstime rc_scan_max = 1000 * 1000;
+	hrt_abstime now = hrt_absolute_time();
 
-		if (_rc_in.channel_count > input_rc_s::RC_INPUT_MAX_CHANNELS) {
-			_rc_in.channel_count = input_rc_s::RC_INPUT_MAX_CHANNELS;
+	switch (_rc_scan_state) {
+	case RC_SCAN_SBUS:
+		if (rc_scan_begin == 0) {
+			rc_scan_begin = now;
+			dprint("fmu: RC_SCAN_SBUS: begin");
+			// Configure S.BUS port
+//			_sbus_fd = sbus_init(SBUS_SERIAL_PORT, true);
+		} else if (hrt_absolute_time() - rc_scan_last_lock > rc_scan_max
+				|| hrt_absolute_time() - rc_scan_begin > rc_scan_max) {
+
+			bool sbus_failsafe, sbus_frame_drop;
+			uint16_t raw_rc_values[input_rc_s::RC_INPUT_MAX_CHANNELS];
+			uint16_t raw_rc_count;
+
+			// read port
+			bool sbus_updated = sbus_input(_sbus_fd, &raw_rc_values[0],
+					&raw_rc_count, &sbus_failsafe, &sbus_frame_drop,
+					input_rc_s::RC_INPUT_MAX_CHANNELS);
+			if (sbus_updated) {
+				dprint("fmu: sbus_input valid");
+				// we have a new PPM frame. Publish it.
+				_rc_in.channel_count = raw_rc_count;
+
+				if (_rc_in.channel_count > input_rc_s::RC_INPUT_MAX_CHANNELS) {
+					_rc_in.channel_count = input_rc_s::RC_INPUT_MAX_CHANNELS;
+				}
+
+				for (uint8_t i = 0; i < _rc_in.channel_count; i++) {
+					_rc_in.values[i] = raw_rc_values[i];
+				}
+
+				_rc_in.timestamp_publication = hrt_absolute_time();
+				_rc_in.timestamp_last_signal = _rc_in.timestamp_publication;
+
+				_rc_in.rc_ppm_frame_length = 0;
+				_rc_in.rssi =
+						(!sbus_frame_drop) ?
+								RC_INPUT_RSSI_MAX : (RC_INPUT_RSSI_MAX / 2);
+				_rc_in.rc_failsafe = sbus_failsafe;
+				_rc_in.rc_lost = false;
+				_rc_in.rc_lost_frame_count = sbus_dropped_frames();
+				_rc_in.rc_total_frame_count = 0;
+
+				rc_updated = true;
+				rc_scan_last_lock = hrt_absolute_time();
+				rc_scan_locked = true;
+			} else {
+				// This triggers the port re-configuration
+				dprint("fmu: sbus read failed");
+				rc_scan_begin = 0;
+				rc_scan_locked = false;
+				// Scan the next protocol
+//				_rc_scan_state = RC_SCAN_DSM;
+			}
 		}
+		break;
+	case RC_SCAN_DSM:
+		warnx("fmu: scan_dsm\n");
 
-		for (uint8_t i = 0; i < _rc_in.channel_count; i++) {
-			_rc_in.values[i] = raw_rc_values[i];
-		}
+		break;
+	case RC_SCAN_SUMD:
 
-		_rc_in.timestamp_publication = hrt_absolute_time();
-		_rc_in.timestamp_last_signal = _rc_in.timestamp_publication;
+		break;
+	case RC_SCAN_ST24:
 
-		_rc_in.rc_ppm_frame_length = 0;
-		_rc_in.rssi = (!sbus_frame_drop) ? RC_INPUT_RSSI_MAX : (RC_INPUT_RSSI_MAX / 2);
-		_rc_in.rc_failsafe = sbus_failsafe;
-		_rc_in.rc_lost = false;
-		_rc_in.rc_lost_frame_count = sbus_dropped_frames();
-		_rc_in.rc_total_frame_count = 0;
-
-		rc_updated = true;
+		break;
 	}
+
 
 #endif
 
 #ifdef HRT_PPM_CHANNEL
+	if (!rc_scan_locked) {
 
-	// see if we have new PPM input data
-	if ((ppm_last_valid_decode != _rc_in.timestamp_last_signal) &&
-	    ppm_decoded_channels > 3) {
-		// we have a new PPM frame. Publish it.
-		_rc_in.channel_count = ppm_decoded_channels;
+		// see if we have new PPM input data
+		if ((ppm_last_valid_decode != _rc_in.timestamp_last_signal) &&
+			ppm_decoded_channels > 3) {
+			// we have a new PPM frame. Publish it.
+			_rc_in.channel_count = ppm_decoded_channels;
 
-		if (_rc_in.channel_count > input_rc_s::RC_INPUT_MAX_CHANNELS) {
-			_rc_in.channel_count = input_rc_s::RC_INPUT_MAX_CHANNELS;
+			if (_rc_in.channel_count > input_rc_s::RC_INPUT_MAX_CHANNELS) {
+				_rc_in.channel_count = input_rc_s::RC_INPUT_MAX_CHANNELS;
+			}
+
+			for (uint8_t i = 0; i < _rc_in.channel_count; i++) {
+				_rc_in.values[i] = ppm_buffer[i];
+			}
+
+			_rc_in.timestamp_publication = ppm_last_valid_decode;
+			_rc_in.timestamp_last_signal = ppm_last_valid_decode;
+
+			_rc_in.rc_ppm_frame_length = ppm_frame_length;
+			_rc_in.rssi = RC_INPUT_RSSI_MAX;
+			_rc_in.rc_failsafe = false;
+			_rc_in.rc_lost = false;
+			_rc_in.rc_lost_frame_count = 0;
+			_rc_in.rc_total_frame_count = 0;
+
+			rc_updated = true;
 		}
-
-		for (uint8_t i = 0; i < _rc_in.channel_count; i++) {
-			_rc_in.values[i] = ppm_buffer[i];
-		}
-
-		_rc_in.timestamp_publication = ppm_last_valid_decode;
-		_rc_in.timestamp_last_signal = ppm_last_valid_decode;
-
-		_rc_in.rc_ppm_frame_length = ppm_frame_length;
-		_rc_in.rssi = RC_INPUT_RSSI_MAX;
-		_rc_in.rc_failsafe = false;
-		_rc_in.rc_lost = false;
-		_rc_in.rc_lost_frame_count = 0;
-		_rc_in.rc_total_frame_count = 0;
-
-		rc_updated = true;
 	}
 
 #endif
