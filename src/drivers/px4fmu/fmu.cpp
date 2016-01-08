@@ -119,13 +119,6 @@ public:
 	int		set_i2c_bus_clock(unsigned bus, unsigned clock_hz);
 
 private:
-	enum RC_SCAN {
-		RC_SCAN_SBUS = 0,
-		RC_SCAN_DSM,
-		RC_SCAN_SUMD,
-		RC_SCAN_ST24
-	};
-
 	static const unsigned _max_actuators = DIRECT_PWM_OUTPUT_CHANNELS;
 
 	Mode		_mode;
@@ -206,8 +199,6 @@ private:
 	/* do not allow to copy due to ptr data members */
 	PX4FMU(const PX4FMU &);
 	PX4FMU operator=(const PX4FMU &);
-
-	void dprint(const char*);
 };
 
 const PX4FMU::GPIOConfig PX4FMU::_gpio_tab[] = {
@@ -329,7 +320,6 @@ PX4FMU::PX4FMU() :
 
 	/* only enable this during development */
 	_debug_enabled = false;
-	void dprint(char*);
 }
 
 PX4FMU::~PX4FMU()
@@ -623,14 +613,6 @@ PX4FMU::cycle_trampoline(void *arg)
 	dev->cycle();
 }
 
-void PX4FMU::dprint(const char *str) {
-	static hrt_abstime then = 0;
-	if (hrt_elapsed_time(&then) > 1000*1000) {
-		then = hrt_absolute_time();
-		warnx(str);
-	}
-}
-
 void
 PX4FMU::cycle()
 {
@@ -651,9 +633,8 @@ PX4FMU::cycle()
 
 #ifdef RC_SERIAL_PORT
 		_sbus_fd = sbus_init(RC_SERIAL_PORT, false);
-		printf("fmu: _sbus_fd: %u\n", _sbus_fd);
 		/* for R07, this signal is active low */
-		stm32_gpiowrite(GPIO_SBUS_INV, 0);
+//		stm32_gpiowrite(GPIO_SBUS_INV, 0);
 #endif
 
 #ifdef DSM_SERIAL_PORT
@@ -661,7 +642,7 @@ PX4FMU::cycle()
 //		_dsm_fd = dsm_init(DSM_SERIAL_PORT);
 #endif
 
-		  _initialized = true;
+		_initialized = true;
 	}
 
 	if (_groups_subscribed != _groups_required) {
@@ -846,15 +827,6 @@ PX4FMU::cycle()
 			input_rc_s::RC_INPUT_MAX_CHANNELS);
 	if (sbus_updated) {
 		// we have a new SBUS frame. Publish it.
-
-		hrt_abstime now = hrt_absolute_time();
-		static hrt_abstime last_update = now;
-
-		warnx("%llu, %llu, %u, %u, %u, %u", now - last_update, now,
-				raw_rc_values[0], raw_rc_values[1], raw_rc_values[2],
-				raw_rc_values[3]);
-		last_update = now;
-
 		_rc_in.channel_count = raw_rc_count;
 
 		if (_rc_in.channel_count > input_rc_s::RC_INPUT_MAX_CHANNELS) {
@@ -869,9 +841,7 @@ PX4FMU::cycle()
 		_rc_in.timestamp_last_signal = _rc_in.timestamp_publication;
 
 		_rc_in.rc_ppm_frame_length = 0;
-		_rc_in.rssi = (!sbus_frame_drop) ?
-		RC_INPUT_RSSI_MAX :
-											(RC_INPUT_RSSI_MAX / 2);
+		_rc_in.rssi = (!sbus_frame_drop) ? RC_INPUT_RSSI_MAX : (RC_INPUT_RSSI_MAX / 2);
 		_rc_in.rc_failsafe = sbus_failsafe;
 		_rc_in.rc_lost = false;
 		_rc_in.rc_lost_frame_count = sbus_dropped_frames();
@@ -921,7 +891,7 @@ PX4FMU::cycle()
 	}
 
 	work_queue(HPWORK, &_work, (worker_t)&PX4FMU::cycle_trampoline, this,
-			   USEC2TICK(SCHEDULE_INTERVAL - main_out_latency));
+				USEC2TICK(SCHEDULE_INTERVAL - main_out_latency));
 }
 
 void PX4FMU::work_stop()
