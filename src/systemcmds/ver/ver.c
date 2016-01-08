@@ -43,6 +43,8 @@
 #include <stdio.h>
 #include <stdbool.h>
 #include <string.h>
+#include <fcntl.h>
+#include <stdlib.h>
 #include <version/version.h>
 #include <systemlib/err.h>
 #include <systemlib/mcu_version.h>
@@ -98,6 +100,14 @@ int ver_main(int argc, char *argv[])
 				}
 			}
 
+			/* open output file */
+			FILE *outfile;
+			outfile = fopen("/fs/microsd/uid.txt", "a");
+
+			if (outfile == NULL) {
+				printf("ERROR opening /fs/microsd.version.txt\n");
+				exit(1);
+			}
 			/* check if we want to show all */
 			bool show_all = !strncmp(argv[1], sz_ver_all_str, sizeof(sz_ver_all_str));
 
@@ -155,6 +165,7 @@ int ver_main(int argc, char *argv[])
 				mcu_unique_id(uid);
 
 				printf("UID: %X:%X:%X \n", uid[0], uid[1], uid[2]);
+				fprintf(outfile, "UID: %X:%X:%X \n", uid[0], uid[1], uid[2]);
 
 				ret = 0;
 			}
