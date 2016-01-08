@@ -633,7 +633,8 @@ PX4FMU::cycle()
 
 #ifdef RC_SERIAL_PORT
 		_sbus_fd = sbus_init(RC_SERIAL_PORT, false);
-		/* for R07, this signal is active low */
+		/* for PixRacer R07, this signal is active low */
+		/* for PixRacer R12, this signal is active high */
 //		stm32_gpiowrite(GPIO_SBUS_INV, 0);
 #endif
 
