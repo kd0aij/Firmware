@@ -61,6 +61,7 @@
 #include "sPort_data.h"
 #include "frsky_data.h"
 
+#include <uORB/topics/input_rc.h>
 
 /* thread state */
 static volatile bool thread_should_exit = false;
@@ -330,6 +331,8 @@ static int frsky_telemetry_thread_main(int argc, char *argv[])
 
 		/* Subscribe to topics */
 		frsky_init();
+		static int input_rc_sub = -1;
+		input_rc_sub = orb_subscribe(ORB_ID(input_rc));
 
 		warnx("sending FrSky D type telemetry");
 		struct adc_linkquality host_frame;
@@ -345,8 +348,14 @@ static int frsky_telemetry_thread_main(int argc, char *argv[])
 			int nbytes = read(uart, &dbuf[0], sizeof(dbuf));
 			bool new_input = frsky_parse_host(&dbuf[0], nbytes, &host_frame);
 			if (new_input) {
+				/* get a local copy of the rc input data */
+				struct input_rc_s rc_in;
+				memset(&rc_in, 0, sizeof(rc_in));
+				orb_copy(ORB_ID(input_rc), input_rc_sub, &rc_in);
+
 //				warnx("host frame: ad1:%u, ad2: %u, rssi: %u",
 //						host_frame.ad1, host_frame.ad2, host_frame.linkq);
+				orb_publish(ORB_ID(input_rc), _to_input_rc, &_rc_in);
 			}
 
 			/* Send frame 1 (every 200ms): acceleration values, altitude (vario), temperatures, current & voltages, RPM */
