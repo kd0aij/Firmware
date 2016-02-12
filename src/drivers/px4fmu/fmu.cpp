@@ -193,6 +193,7 @@ private:
 	uint16_t	_reverse_pwm_mask;
 	unsigned	_num_failsafe_set;
 	unsigned	_num_disarmed_set;
+	perf_counter_t	_controller_latency_perf;
 
 	static bool	arm_nothrottle() { return (_armed.prearmed && !_armed.armed); }
 
@@ -337,7 +338,8 @@ PX4FMU::PX4FMU() :
 	_disarmed_pwm{0},
 	_reverse_pwm_mask(0),
 	_num_failsafe_set(0),
-	_num_disarmed_set(0)
+	_num_disarmed_set(0),
+	_controller_latency_perf(perf_alloc_once(PC_ELAPSED, "ctrl_latency")),
 {
 	for (unsigned i = 0; i < _max_actuators; i++) {
 		_min_pwm[i] = PWM_DEFAULT_MIN;
@@ -662,6 +664,7 @@ PX4FMU::publish_pwm_outputs(uint16_t *values, size_t numvalues)
 	} else {
 		orb_publish(ORB_ID(actuator_outputs), _outputs_pub, &outputs);
 	}
+	//			perf_end(_controller_latency_perf);
 }
 
 
