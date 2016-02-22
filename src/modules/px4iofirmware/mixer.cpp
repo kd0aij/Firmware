@@ -185,7 +185,8 @@ mixer_tick(void)
 					/* and there is valid input via or mixer */         && (r_status_flags & PX4IO_P_STATUS_FLAGS_MIXER_OK));
 
 	should_always_enable_pwm = (r_setup_arming & PX4IO_P_SETUP_ARMING_ALWAYS_PWM_ENABLE)
-				   && (r_status_flags & PX4IO_P_STATUS_FLAGS_INIT_OK)
+						   && (r_status_flags & PX4IO_P_STATUS_FLAGS_INIT_OK)
+						   && (r_status_flags & PX4IO_P_SETUP_ARMING_LOCKDOWN)
 				   && (r_status_flags & PX4IO_P_STATUS_FLAGS_FMU_OK);
 
 	/*
@@ -266,10 +267,10 @@ mixer_tick(void)
 	/* set arming */
 	bool needs_to_arm = (should_arm || should_arm_nothrottle || should_always_enable_pwm);
 
-	/* check any conditions that prevent arming */
-	if (r_setup_arming & PX4IO_P_SETUP_ARMING_LOCKDOWN) {
-		needs_to_arm = false;
-	}
+//	/* check any conditions that prevent arming */
+//	if (r_setup_arming & PX4IO_P_SETUP_ARMING_LOCKDOWN) {
+//		needs_to_arm = false;
+//	}
 
 	if (needs_to_arm && !mixer_servos_armed) {
 		/* need to arm, but not armed */

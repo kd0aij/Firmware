@@ -954,7 +954,7 @@ PX4FMU::cycle()
 		orb_copy(ORB_ID(actuator_armed), _armed_sub, &_armed);
 
 		/* update the armed status and check that we're not locked down */
-		_throttle_armed = _armed.armed && !_armed.lockdown;
+		_throttle_armed = _armed.armed && !_armed.lockdown && !_armed.force_failsafe;
 
 		/* update PWM status if armed or if disarmed PWM values are set */
 		bool pwm_on = (_armed.armed || _num_disarmed_set > 0);
