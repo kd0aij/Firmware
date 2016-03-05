@@ -63,6 +63,9 @@ LidarLitePWM::LidarLitePWM(const char *path) :
 	_pwm{},
 	_distance_sensor_topic(nullptr),
 	_range{},
+	_valid_count(0),
+	_pulse_buffer{},
+	_pbuf_index(0),
 	_sample_perf(perf_alloc(PC_ELAPSED, "ll40ls_pwm_read")),
 	_read_errors(perf_alloc(PC_COUNT, "ll40ls_pwm_read_errors")),
 	_buffer_overflows(perf_alloc(PC_COUNT, "ll40ls_pwm_buffer_overflows")),
@@ -179,34 +182,36 @@ int LidarLitePWM::measure()
 		return ERROR;
 	}
 
+//	warnx("period: %u, width: %u", _pwm.period, _pwm.pulse_width);
+	/* maintain a circular buffer of pulse widths since the first and last one or two widths may be invalid */
+	static int cur_index = 0;
+	// for distances near zero and > 40m, no PWM pulse is generated:
+	// Suppress measurements with long conversion intervals
+	// by reporting an invalid range of 0m.
+	if (_pwm.period > 11000) {
+		_valid_count = 0;
+		warnx("break in sequence: reported range %5.3f", (double)_range.current_distance);
+	} else if (_valid_count < (_buflen+1)/2) {
+		_valid_count++;
+	} else {
+		_pulse_buffer[_pbuf_index++] = _pwm.pulse_width;
+		if (_pbuf_index >= _buflen) {
+			_pbuf_index = 0;
+		}
+		cur_index = (_pbuf_index + (_buflen+1)/2) % _buflen;
+	}
+//	warnx("period: %u, width: %u", _pwm.period, _pwm.pulse_width);
+//	warnx("index: %u, pbuf: %u %u %u %u %u", cur_index, _pulse_buffer[0], _pulse_buffer[1], _pulse_buffer[2], _pulse_buffer[3], _pulse_buffer[4]);
+
 	_range.timestamp = hrt_absolute_time();
 	_range.type = distance_sensor_s::MAV_DISTANCE_SENSOR_LASER;
 	_range.max_distance = get_maximum_distance();
 	_range.min_distance = get_minimum_distance();
-	_range.current_distance = float(_pwm.pulse_width) * 1e-3f;   /* .001 m/usec for LIDAR-Lite */
+	_range.current_distance = float(_pulse_buffer[cur_index]) * 1e-3f;   /* .001 m/usec for LIDAR-Lite */
 	_range.covariance = 0.0f;
 	_range.orientation = 8;
 	/* TODO: set proper ID */
 	_range.id = 0;
-
-	/* Due to a bug in older versions of the LidarLite firmware, we have to reset sensor on (distance == 0) */
-	if (_range.current_distance <= 0.0f) {
-		perf_count(_sensor_zero_resets);
-		perf_end(_sample_perf);
-		return reset_sensor();
-	}
-
-	uint64_t period = _range.timestamp - _lastTimeStamp;
-
-	// for distances near zero and > 40m, no PWM pulse is generated
-	// At 40m AGL, the PWM pulse will be 40msec long, and the period will be only slightly longer
-	// use 50msec as a conservative maximum for the pulse period
-	if (period > LL40LS_CONVERSION_INTERVAL) {
-		// report an invalid range of 0m, to avoid glitches on takeoff
-		_range.current_distance = 0.0f;
-	}
-
-	_lastTimeStamp = _range.timestamp;
 
 	if (_distance_sensor_topic != nullptr) {
 		orb_publish(ORB_ID(distance_sensor), _distance_sensor_topic, &_range);

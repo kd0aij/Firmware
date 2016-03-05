@@ -113,7 +113,13 @@ private:
 	struct pwm_input_s	_pwm;
 	orb_advert_t	        _distance_sensor_topic;
 	struct distance_sensor_s _range;
-	uint64_t        _lastTimeStamp;
+	/* number of pulses received at 10Hz */
+	int			_valid_count;
+	/* circular buffer of pulse widths: max width 50m * 1e3 usec/m */
+	static const int	_buflen = 3;
+	uint32_t	_pulse_buffer[_buflen];
+	int			_pbuf_index;
+
 
 	perf_counter_t	        _sample_perf;
 	perf_counter_t	        _read_errors;
