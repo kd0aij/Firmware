@@ -194,6 +194,7 @@ int LidarLitePWM::measure()
 		_valid_count++;
 
 	} else {
+//		_ts_buffer[_pbuf_index] = _pwm.timestamp;
 		_pulse_buffer[_pbuf_index++] = _pwm.pulse_width;
 
 		if (_pbuf_index >= _buflen) {
@@ -208,6 +209,7 @@ int LidarLitePWM::measure()
 	_range.min_distance = get_minimum_distance();
 	int cur_index = (_pbuf_index + (_buflen + 1) / 2) % _buflen;
 	_range.current_distance = float(_pulse_buffer[cur_index]) * 1e-3f;   /* .001 m/usec for LIDAR-Lite */
+//	warnx("latency samples: %u, usec: %llu", (_buflen + (_pbuf_index - cur_index)) %_buflen, (_range.timestamp - _ts_buffer[cur_index]));
 	_range.covariance = 0.0f;
 	_range.orientation = 8;
 	/* TODO: set proper ID */

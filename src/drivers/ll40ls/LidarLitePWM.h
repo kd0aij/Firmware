@@ -119,6 +119,7 @@ private:
 	int			_valid_count;
 	/* circular buffer of pulse widths */
 	uint32_t	_pulse_buffer[_buflen];
+//	uint64_t	_ts_buffer[_buflen];
 	int			_pbuf_index;
 
 
