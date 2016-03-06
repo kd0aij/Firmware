@@ -106,7 +106,7 @@ protected:
 
 private:
 	static const int	_buflen = 11;
-	static const int	LIDAR_LITE_MAX_PWM_PERIOD = 30000;
+	static const int	LIDAR_LITE_MAX_PWM_PERIOD = (int)(LL40LS_MAX_DISTANCE + 5) * 1000;
 	work_s			_work;
 	ringbuffer::RingBuffer	*_reports;
 	int			_class_instance;
