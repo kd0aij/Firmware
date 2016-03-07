@@ -255,21 +255,13 @@ MPU9250_mag::measure(struct ak8963_regs data)
 
 	mag_report		mrb;
 	mrb.timestamp = hrt_absolute_time();
-#if 0
-	mrb.x_raw = data.x;
-	mrb.y_raw = data.y;
-	mrb.z_raw = data.z;
 
-	float xraw_f = data.x;
-	float yraw_f = data.y;
-	float zraw_f = data.z;
-#endif
-	mrb.x_raw = data.y;
-	mrb.y_raw = data.x;
+	mrb.x_raw = data.x;
+	mrb.y_raw = -data.y;
 	mrb.z_raw = -data.z;
 
-	float xraw_f = data.y;
-	float yraw_f = data.x;
+	float xraw_f = data.x;
+	float yraw_f = -data.y;
 	float zraw_f = -data.z;
 
 	/* apply user specified rotation */
@@ -522,7 +514,7 @@ MPU9250_mag::ioctl(struct file *filp, int cmd, unsigned long arg)
 int
 MPU9250_mag::self_test(void)
 {
-	return 0;
+	return 1;
 }
 
 void
