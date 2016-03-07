@@ -64,8 +64,6 @@ LidarLitePWM::LidarLitePWM(const char *path) :
 	_distance_sensor_topic(nullptr),
 	_range{},
 	_valid_count(0),
-	_pulse_buffer{},
-	_pbuf_index(0),
 	_sample_perf(perf_alloc(PC_ELAPSED, "ll40ls_pwm_read")),
 	_read_errors(perf_alloc(PC_COUNT, "ll40ls_pwm_read_errors")),
 	_buffer_overflows(perf_alloc(PC_COUNT, "ll40ls_pwm_buffer_overflows")),
@@ -183,33 +181,25 @@ int LidarLitePWM::measure()
 	}
 
 	/* for distances near zero and > 40m, no PWM pulse is generated:
-	 * maintain a circular buffer of pulse widths and suppress first/last measurements
-	 * of each contiguous stream.
+	 * Require a minimum number of pulses with less than max interval before accepting data.
 	 */
+	_range.current_distance = 0.0f;
 	if (_pwm.period > LIDAR_LITE_MAX_PWM_PERIOD) {
 		_valid_count = 0;
-		warnx("break in sequence: reported range %u", _pwm.pulse_width);
-
-	} else if (_valid_count < (_buflen + 1) / 2) {
-		_valid_count++;
+		warnx("break in sequence: reported range %u, period: %u", _pwm.pulse_width, _pwm.period);
 
 	} else {
-//		_ts_buffer[_pbuf_index] = _pwm.timestamp;
-		_pulse_buffer[_pbuf_index++] = _pwm.pulse_width;
-
-		if (_pbuf_index >= _buflen) {
-			_pbuf_index = 0;
+		if (_valid_count < 5) {
+			_valid_count++;
+		} else {
+			_range.current_distance = float(_pwm.pulse_width) * 1e-3f;   /* .001 m/usec for LIDAR-Lite */
 		}
-
 	}
 
 	_range.timestamp = hrt_absolute_time();
 	_range.type = distance_sensor_s::MAV_DISTANCE_SENSOR_LASER;
 	_range.max_distance = get_maximum_distance();
 	_range.min_distance = get_minimum_distance();
-	int cur_index = (_pbuf_index + (_buflen + 1) / 2) % _buflen;
-	_range.current_distance = float(_pulse_buffer[cur_index]) * 1e-3f;   /* .001 m/usec for LIDAR-Lite */
-//	warnx("latency samples: %u, usec: %llu", (_buflen + (_pbuf_index - cur_index)) %_buflen, (_range.timestamp - _ts_buffer[cur_index]));
 	_range.covariance = 0.0f;
 	_range.orientation = 8;
 	/* TODO: set proper ID */
