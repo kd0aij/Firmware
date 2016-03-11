@@ -609,11 +609,8 @@ then
 		fi
 	fi
 
-	if [ "x$MAVLINK_F" == xnone ]
-	then
-	else
-		mavlink start ${MAVLINK_F}
-	fi
+	# for pixracer R7, don't run mavlink on S1; this is the Sport
+	#mavlink start $MAVLINK_F
 	unset MAVLINK_F
 
 	#
