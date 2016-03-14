@@ -791,7 +791,7 @@ fi
 if ver hwcmp PX4FMU_V4
 then
 	# on pixracer R7, sport is on USART2
-	frsky_telemetry start -d /dev/ttyS1
+	#frsky_telemetry start -d /dev/ttyS1
 	# but on R12/14 it on on USART8
 	#frsky_telemetry start -d /dev/ttyS6
 fi
