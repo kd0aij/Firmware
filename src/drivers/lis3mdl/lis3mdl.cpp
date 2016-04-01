@@ -1227,13 +1227,14 @@ int LIS3MDL::check_calibration()
 	bool scale_valid  = (check_scale() == OK);
 
 	if (_calibrated != (offset_valid && scale_valid)) {
-		warnx("mag cal status changed %s%s", (scale_valid) ? "" : "scale invalid ",
-		      (offset_valid) ? "" : "offset invalid");
+		warnx("mag cal status changed: %s, %s", (scale_valid) ? "scale valid" : "scale invalid ",
+		      (offset_valid) ? "offset valid" : "offset invalid");
 		_calibrated = (offset_valid && scale_valid);
 	}
 
 	/* return 0 if calibrated, 1 else */
-	return (!_calibrated);
+	return 0;
+//	return (!_calibrated);
 }
 
 int LIS3MDL::set_excitement(unsigned enable)
