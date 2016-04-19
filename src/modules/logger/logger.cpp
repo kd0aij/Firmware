@@ -338,17 +338,15 @@ void Logger::run()
 	/* Using orb_set_interval resulted in very irregular logging intervals.
 	 * Instead, usleep(_log_interval) at end of loop
 	 */
-//	const unsigned Hz_100 = 9;
-	const unsigned Hz_10 = 90;
 	add_topic("sensor_accel");
-	add_topic("sensor_baro", Hz_10);
+	add_topic("sensor_baro", 100);
 	add_topic("manual_control_setpoint");
 	add_topic("vehicle_rates_setpoint");
 	add_topic("sensor_gyro");
 	add_topic("vehicle_attitude_setpoint");
 	add_topic("vehicle_attitude");
 	add_topic("actuator_outputs");
-	add_topic("battery_status", Hz_10);
+	add_topic("battery_status", 100);
 
 
 	//add_topic("estimator_status", 0);
