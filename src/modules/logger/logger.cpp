@@ -419,6 +419,7 @@ void Logger::run()
 				for (unsigned instance = 0; instance < ORB_MULTI_MAX_INSTANCES; instance++) {
 					if (copy_if_updated_multi(sub.metadata, instance, &sub.fd[instance], buffer + sizeof(message_data_header_s))) {
 
+						// debug print to verify timestamps
 //						uint64_t timestamp;
 //						memcpy(&timestamp, buffer + sizeof(message_data_header_s), sizeof(timestamp));
 //						warnx("topic: %s, instance: %d, timestamp: %llu",
