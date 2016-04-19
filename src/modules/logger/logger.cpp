@@ -337,17 +337,18 @@ void Logger::run()
 
 	/* Using orb_set_interval resulted in very irregular logging intervals.
 	 * Instead, usleep(_log_interval) at end of loop
-	const unsigned ten_msec = 10;
-	const unsigned hundred_msec = 100;
 	 */
+//	const unsigned Hz_100 = 9;
+	const unsigned Hz_10 = 90;
 	add_topic("sensor_accel");
-	add_topic("sensor_baro", 20);
+	add_topic("sensor_baro", Hz_10);
 	add_topic("manual_control_setpoint");
 	add_topic("vehicle_rates_setpoint");
 	add_topic("sensor_gyro");
-	add_topic("vehicle_attitude_setpoint", 20);
+	add_topic("vehicle_attitude_setpoint");
 	add_topic("vehicle_attitude");
-	add_topic("actuator_outputs", 20);
+	add_topic("actuator_outputs");
+	add_topic("battery_status", Hz_10);
 
 
 	//add_topic("estimator_status", 0);
@@ -423,6 +424,7 @@ void Logger::run()
 				for (unsigned instance = 0; instance < ORB_MULTI_MAX_INSTANCES; instance++) {
 					if (copy_if_updated_multi(sub.metadata, instance, &sub.fd[instance], buffer + sizeof(message_data_header_s))) {
 
+						// debug print to verify timestamps
 //						uint64_t timestamp;
 //						memcpy(&timestamp, buffer + sizeof(message_data_header_s), sizeof(timestamp));
 //						warnx("topic: %s, instance: %d, timestamp: %llu",
