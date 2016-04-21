@@ -319,9 +319,9 @@ bool Logger::copy_if_updated_multi(orb_id_t topic, int multi_instance, int *hand
 
 void Logger::run()
 {
-#ifdef DBGPRINT
-	struct	mallinfo alloc_info;
-#endif
+//#ifdef DBGPRINT
+//	struct	mallinfo alloc_info;
+//#endif
 
 	warnx("started");
 
@@ -499,10 +499,12 @@ void Logger::run()
 			double deltat = (double)(hrt_absolute_time() - timer_start)  * 1e-6;
 
 			if (deltat > 4.0) {
-				alloc_info = mallinfo();
+//				alloc_info = mallinfo();
 				double throughput = total_bytes / deltat;
-				warnx("%8.1e Kbytes/sec, %d highWater,  %d dropouts, %5.3f sec max, free heap: %d",
-				      throughput / 1e3, highWater, dropout_count, max_drop_len, alloc_info.fordblks);
+//				warnx("%8.1e Kbytes/sec, %d highWater,  %d dropouts, %5.3f sec max, free heap: %d",
+//				      throughput / 1e3, highWater, dropout_count, max_drop_len, alloc_info.fordblks);
+				warnx("%8.1e Kbytes/sec, %d highWater,  %d dropouts, %5.3f sec max",
+				      throughput / 1e3, highWater, dropout_count, max_drop_len);
 
 				total_bytes = 0;
 				highWater = 0,
@@ -515,7 +517,6 @@ void Logger::run()
 		}
 
 		usleep(_log_interval);
-//		usleep(1000);
 	}
 
 	// stop the writer thread
