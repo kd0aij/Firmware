@@ -412,7 +412,7 @@ protected:
 // TODO: the logging doesn't work on Snapdragon yet because of file paths.
 #ifndef __PX4_POSIX_EAGLE
 				/* write log messages in first instance to disk */
-				if (_mavlink->get_instance_id() == 0) {
+				if (_mavlink->get_instance_id() == 0 && _mavlink->get_logging_enabled()) {
 					if (fp) {
 						if (EOF == fputs(msg.text, fp)) {
 							write_err_count++;
@@ -430,8 +430,8 @@ protected:
 
 					} else if (write_err_count < write_err_threshold) {
 						/* string to hold the path to the log */
-						char log_file_name[64];
 						char log_file_path[128];
+						log_file_path[0] = 0;
 
 						timespec ts;
 						px4_clock_gettime(CLOCK_REALTIME, &ts);
@@ -440,9 +440,9 @@ protected:
 						struct tm tt;
 						gmtime_r(&gps_time_sec, &tt);
 
-						// XXX we do not want to interfere here with the SD log app
-						strftime(log_file_name, sizeof(log_file_name), "msgs_%Y_%m_%d_%H_%M_%S.txt", &tt);
-						snprintf(log_file_path, sizeof(log_file_path), PX4_ROOTFSDIR"/fs/microsd/%s", log_file_name);
+						/* store the log file in the root directory */
+						int offs = snprintf(log_file_path, sizeof(log_file_path) - 1, PX4_ROOTFSDIR"/fs/microsd/");
+						strftime(log_file_path + offs, sizeof(log_file_path), "msgs_%Y_%m_%d_%H_%M_%S.txt", &tt);
 						fp = fopen(log_file_path, "ab");
 
 						if (fp != NULL) {
@@ -578,6 +578,14 @@ protected:
 		const bool updated_status = _status_sub->update(&status);
 		const bool updated_battery = _battery_status_sub->update(&battery_status);
 
+		if (updated_status) {
+			if (status.arming_state >= vehicle_status_s::ARMING_STATE_ARMED) {
+				_mavlink->set_logging_enabled(true);
+			} else {
+				_mavlink->set_logging_enabled(false);
+			}
+		}
+
 		if (updated_status || updated_battery) {
 			mavlink_sys_status_t msg;
 
@@ -600,10 +608,14 @@ protected:
 			_mavlink->send_message(MAVLINK_MSG_ID_SYS_STATUS, &msg);
 
 			/* battery status message with higher resolution */
-			mavlink_battery_status_t bat_msg;
+			mavlink_battery_status_t bat_msg = {};
 			bat_msg.id = 0;
 			bat_msg.battery_function = MAV_BATTERY_FUNCTION_ALL;
 			bat_msg.type = MAV_BATTERY_TYPE_LIPO;
+			bat_msg.current_consumed = battery_status.discharged_mah;
+			bat_msg.energy_consumed = -1;
+			bat_msg.current_battery = battery_status.current_a * 100;
+			bat_msg.battery_remaining = battery_status.remaining >= 0 ? battery_status.remaining * 100.0f : -1;
 			bat_msg.temperature = INT16_MAX;
 			for (unsigned int i = 0; i < (sizeof(bat_msg.voltages) / sizeof(bat_msg.voltages[0])); i++) {
 				if ((int)i < battery_status.cell_count) {
@@ -612,9 +624,6 @@ protected:
 					bat_msg.voltages[i] = UINT16_MAX;
 				}
 			}
-
-			// TODO: calculate this
-			bat_msg.energy_consumed = -1.0f;
 
 			_mavlink->send_message(MAVLINK_MSG_ID_BATTERY_STATUS, &bat_msg);
 		}
@@ -2326,7 +2335,7 @@ protected:
 			msg.chan17_raw = (rc.channel_count > 16) ? rc.values[16] : UINT16_MAX;
 			msg.chan18_raw = (rc.channel_count > 17) ? rc.values[17] : UINT16_MAX;
 
-			msg.rssi = rc.rssi;
+			msg.rssi = (rc.channel_count > 0) ? rc.rssi : 0;
 
 			_mavlink->send_message(MAVLINK_MSG_ID_RC_CHANNELS, &msg);
 

@@ -1657,11 +1657,13 @@ Sensors::adc_poll(struct sensor_combined_s &raw)
 				if (ADC_BATTERY_VOLTAGE_CHANNEL == buf_adc[i].am_channel) {
 					/* Voltage in volts */
 					bat_voltage_v = (buf_adc[i].am_data * _parameters.battery_voltage_scaling);
-					updated_battery = true;
+
+					if (bat_voltage_v > 0.5f) {
+						updated_battery = true;
+					}
 
 				} else if (ADC_BATTERY_CURRENT_CHANNEL == buf_adc[i].am_channel) {
 					bat_current_a = (buf_adc[i].am_data * _parameters.battery_current_scaling);
-					updated_battery = true;
 
 #ifdef ADC_AIRSPEED_VOLTAGE_CHANNEL
 
@@ -2201,11 +2203,17 @@ Sensors::task_main()
 			/* If the secondary failed as well, go to the tertiary, also only if available. */
 			if (hrt_elapsed_time(&raw.gyro_timestamp[1]) > 20 * 1000 && _gyro_sub[2] >= 0) {
 				fds[0].fd = _gyro_sub[2];
-				warnx("failing over to third gyro");
+
+				if (!_hil_enabled) {
+					warnx("failing over to third gyro");
+				}
 
 			} else if (_gyro_sub[1] >= 0) {
 				fds[0].fd = _gyro_sub[1];
-				warnx("failing over to second gyro");
+
+				if (!_hil_enabled) {
+					warnx("failing over to second gyro");
+				}
 			}
 		}
 

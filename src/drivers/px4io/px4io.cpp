@@ -2652,7 +2652,10 @@ PX4IO::ioctl(file *filep, int cmd, unsigned long arg)
 			/* TODO: we could go lower for e.g. TurboPWM */
 			unsigned channel = cmd - PWM_SERVO_SET(0);
 
-			if ((channel >= _max_actuators) || (arg < PWM_LOWEST_MIN) || (arg > PWM_HIGHEST_MAX)) {
+			/* PWM needs to be either 0 or in the valid range. */
+			if ((arg != 0) && ((channel >= _max_actuators) ||
+					   (arg < PWM_LOWEST_MIN) ||
+					   (arg > PWM_HIGHEST_MAX))) {
 				ret = -EINVAL;
 
 			} else {
