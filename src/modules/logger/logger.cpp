@@ -104,7 +104,7 @@ int logger_main(int argc, char *argv[])
 	}
 
 	if (argc < 2) {
-		PX4_INFO("usage: logger {start|stop|status}");
+		Logger::usage(nullptr);
 		return 1;
 	}
 
@@ -471,6 +471,7 @@ bool Logger::copy_if_updated_multi(LoggerSubscription &sub, int multi_instance, 
 
 void Logger::add_default_topics()
 {
+	add_topic("centripetal");
 	add_topic("vehicle_attitude", 10);
 	add_topic("actuator_outputs", 50);
 	add_topic("telemetry_status", 50);

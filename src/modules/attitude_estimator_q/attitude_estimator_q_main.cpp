@@ -52,6 +52,7 @@
 #include <limits.h>
 #include <math.h>
 #include <uORB/uORB.h>
+#include <uORB/topics/centripetal.h>
 #include <uORB/topics/sensor_combined.h>
 #include <uORB/topics/vehicle_attitude.h>
 #include <uORB/topics/control_state.h>
@@ -125,9 +126,13 @@ private:
 	int		_mocap_sub = -1;
 	int		_airspeed_sub = -1;
 	int		_global_pos_sub = -1;
+	int		_att_inst = -1;
+	int		_att_inst2 = -1;
 	orb_advert_t	_att_pub = nullptr;
+	orb_advert_t	_att_pub2 = nullptr;
 	orb_advert_t	_ctrl_state_pub = nullptr;
 	orb_advert_t	_est_state_pub = nullptr;
+	orb_advert_t	_centripetal_pub = nullptr;
 
 	struct {
 		param_t	w_acc;
@@ -157,8 +162,14 @@ private:
 	Vector<3>	_accel;
 	Vector<3>	_mag;
 
+	double _thetaT = 0.0f;	/* estimated direction of thrust vector */
+	Vector<3> 	_delay_buff[10];
+	int		_delay_index;
+
 	vision_position_estimate_s _vision = {};
 	Vector<3>	_vision_hdg;
+
+	struct centripetal_s _centrip;
 
 	att_pos_mocap_s _mocap = {};
 	Vector<3>	_mocap_hdg;
@@ -169,6 +180,10 @@ private:
 	Vector<3>	_rates;
 	Vector<3>	_gyro_bias;
 
+	Quaternion	_q2;
+	Vector<3>	_rates2;
+	Vector<3>	_gyro_bias2;
+
 	vehicle_global_position_s _gpos = {};
 	Vector<3>	_vel_prev;
 	Vector<3>	_pos_acc;
@@ -177,6 +192,9 @@ private:
 	math::LowPassFilter2p _lp_roll_rate;
 	math::LowPassFilter2p _lp_pitch_rate;
 	math::LowPassFilter2p _lp_yaw_rate;
+
+	/* Lowpass filter for estimated turn rate */
+	math::LowPassFilter2p _lp_omega;
 
 	hrt_abstime _vel_prev_t = 0;
 
@@ -195,7 +213,8 @@ private:
 
 	bool init();
 
-	bool update(float dt);
+	bool update(Quaternion & quat, Vector<3> & rates, Vector<3> & gyro_bias, float dt);
+	bool update_centrip_comp(Quaternion & quat, Vector<3> & rates, Vector<3> & gyro_bias, float dt);
 
 	// Update magnetic declination (in rads) immediately changing yaw rotation
 	void update_mag_declination(float new_declination);
@@ -207,7 +226,8 @@ AttitudeEstimatorQ::AttitudeEstimatorQ() :
 	_pos_acc(0, 0, 0),
 	_lp_roll_rate(250.0f, 30.0f),
 	_lp_pitch_rate(250.0f, 30.0f),
-	_lp_yaw_rate(250.0f, 20.0f)
+	_lp_yaw_rate(250.0f, 20.0f),
+	_lp_omega(250.0f, 1.0f)
 {
 	_params_handles.w_acc		= param_find("ATT_W_ACC");
 	_params_handles.w_mag		= param_find("ATT_W_MAG");
@@ -256,7 +276,7 @@ int AttitudeEstimatorQ::start()
 	_control_task = px4_task_spawn_cmd("attitude_estimator_q",
 					   SCHED_DEFAULT,
 					   SCHED_PRIORITY_MAX - 5,
-					   2000,
+					   2500,
 					   (px4_main_t)&AttitudeEstimatorQ::task_main_trampoline,
 					   nullptr);
 
@@ -451,41 +471,84 @@ void AttitudeEstimatorQ::task_main()
 			dt = _dt_max;
 		}
 
-		if (!update(dt)) {
-			continue;
+		/* primary attitude estimate is _q */
+		if (update_centrip_comp(_q, _rates, _gyro_bias, dt)) {
+			int cinst;
+			_centrip.timestamp = sensors.timestamp;
+			orb_publish_auto(ORB_ID(centripetal), &_centripetal_pub, &_centrip, &cinst, ORB_PRIO_HIGH);
+			Vector<3> euler = _q.to_euler();
+
+			struct vehicle_attitude_s att = {};
+			att.timestamp = sensors.timestamp;
+
+			att.roll = euler(0);
+			att.pitch = euler(1);
+			att.yaw = euler(2);
+
+			att.rollspeed = _rates(0);
+			att.pitchspeed = _rates(1);
+			att.yawspeed = _rates(2);
+
+			for (int i = 0; i < 3; i++) {
+				att.g_comp[i] = _accel(i) - _pos_acc(i);
+			}
+
+			/* copy offsets */
+			memcpy(&att.rate_offsets, _gyro_bias.data, sizeof(att.rate_offsets));
+
+			Matrix<3, 3> R = _q.to_dcm();
+
+			/* copy rotation matrix */
+			memcpy(&att.R[0], R.data, sizeof(att.R));
+			att.R_valid = true;
+			memcpy(&att.q[0], _q.data, sizeof(att.q));
+			att.q_valid = true;
+
+			att.rate_vibration = _voter_gyro.get_vibration_factor(hrt_absolute_time());
+			att.accel_vibration = _voter_accel.get_vibration_factor(hrt_absolute_time());
+			att.mag_vibration = _voter_mag.get_vibration_factor(hrt_absolute_time());
+
+			int inst;
+			orb_publish_auto(ORB_ID(vehicle_attitude), &_att_pub, &att, &inst, ORB_PRIO_HIGH);
 		}
 
-		Vector<3> euler = _q.to_euler();
+		/* uncompensated attitude estimate is _q2 */
+		if (update(_q2, _rates2, _gyro_bias2, dt)) {
+			Vector<3> euler = _q2.to_euler();
 
-		struct vehicle_attitude_s att = {};
-		att.timestamp = sensors.timestamp;
+			struct vehicle_attitude_s att = {};
+			att.timestamp = sensors.timestamp;
 
-		att.roll = euler(0);
-		att.pitch = euler(1);
-		att.yaw = euler(2);
+			att.roll = euler(0);
+			att.pitch = euler(1);
+			att.yaw = euler(2);
 
-		att.rollspeed = _rates(0);
-		att.pitchspeed = _rates(1);
-		att.yawspeed = _rates(2);
+			att.rollspeed = _rates2(0);
+			att.pitchspeed = _rates2(1);
+			att.yawspeed = _rates2(2);
 
-		for (int i = 0; i < 3; i++) {
-			att.g_comp[i] = _accel(i) - _pos_acc(i);
+			for (int i = 0; i < 3; i++) {
+				att.g_comp[i] = _accel(i) - _pos_acc(i);
+			}
+
+			/* copy offsets */
+			memcpy(&att.rate_offsets, _gyro_bias2.data, sizeof(att.rate_offsets));
+
+			Matrix<3, 3> R = _q2.to_dcm();
+
+			/* copy rotation matrix */
+			memcpy(&att.R[0], R.data, sizeof(att.R));
+			att.R_valid = true;
+			memcpy(&att.q[0], _q2.data, sizeof(att.q));
+			att.q_valid = true;
+
+			att.rate_vibration = _voter_gyro.get_vibration_factor(hrt_absolute_time());
+			att.accel_vibration = _voter_accel.get_vibration_factor(hrt_absolute_time());
+			att.mag_vibration = _voter_mag.get_vibration_factor(hrt_absolute_time());
+
+			int inst;
+			orb_publish_auto(ORB_ID(vehicle_attitude), &_att_pub2, &att, &inst, ORB_PRIO_HIGH);
 		}
-
-		/* copy offsets */
-		memcpy(&att.rate_offsets, _gyro_bias.data, sizeof(att.rate_offsets));
-
-		Matrix<3, 3> R = _q.to_dcm();
-
-		/* copy rotation matrix */
-		memcpy(&att.R[0], R.data, sizeof(att.R));
-		att.R_valid = true;
-		memcpy(&att.q[0], _q.data, sizeof(att.q));
-		att.q_valid = true;
-
-		/* the instance count is not used here */
-		int att_inst;
-		orb_publish_auto(ORB_ID(vehicle_attitude), &_att_pub, &att, &att_inst, ORB_PRIO_HIGH);
 
 		{
 			struct control_state_s ctrl_state = {};
@@ -627,6 +690,8 @@ bool AttitudeEstimatorQ::init()
 
 	_q.normalize();
 
+	_q2 = Quaternion(_q);
+
 	if (PX4_ISFINITE(_q(0)) && PX4_ISFINITE(_q(1)) &&
 	    PX4_ISFINITE(_q(2)) && PX4_ISFINITE(_q(3)) &&
 	    _q.length() > 0.95f && _q.length() < 1.05f) {
@@ -639,7 +704,7 @@ bool AttitudeEstimatorQ::init()
 	return _inited;
 }
 
-bool AttitudeEstimatorQ::update(float dt)
+bool AttitudeEstimatorQ::update(Quaternion & quat, Vector<3> & rates, Vector<3> & gyro_bias, float dt)
 {
 	if (!_inited) {
 
@@ -650,7 +715,7 @@ bool AttitudeEstimatorQ::update(float dt)
 		return init();
 	}
 
-	Quaternion q_last = _q;
+	Quaternion q_last = quat;
 
 	// Angular rate of correction
 	Vector<3> corr;
@@ -659,72 +724,265 @@ bool AttitudeEstimatorQ::update(float dt)
 		if (_ext_hdg_mode == 1) {
 			// Vision heading correction
 			// Project heading to global frame and extract XY component
-			Vector<3> vision_hdg_earth = _q.conjugate(_vision_hdg);
+			Vector<3> vision_hdg_earth = quat.conjugate(_vision_hdg);
 			float vision_hdg_err = _wrap_pi(atan2f(vision_hdg_earth(1), vision_hdg_earth(0)));
 			// Project correction to body frame
-			corr += _q.conjugate_inversed(Vector<3>(0.0f, 0.0f, -vision_hdg_err)) * _w_ext_hdg;
+			corr += quat.conjugate_inversed(Vector<3>(0.0f, 0.0f, -vision_hdg_err)) * _w_ext_hdg;
 		}
 
 		if (_ext_hdg_mode == 2) {
 			// Mocap heading correction
 			// Project heading to global frame and extract XY component
-			Vector<3> mocap_hdg_earth = _q.conjugate(_mocap_hdg);
+			Vector<3> mocap_hdg_earth = quat.conjugate(_mocap_hdg);
 			float mocap_hdg_err = _wrap_pi(atan2f(mocap_hdg_earth(1), mocap_hdg_earth(0)));
 			// Project correction to body frame
-			corr += _q.conjugate_inversed(Vector<3>(0.0f, 0.0f, -mocap_hdg_err)) * _w_ext_hdg;
+			corr += quat.conjugate_inversed(Vector<3>(0.0f, 0.0f, -mocap_hdg_err)) * _w_ext_hdg;
 		}
 	}
 
 	if (_ext_hdg_mode == 0  || !_ext_hdg_good) {
 		// Magnetometer correction
 		// Project mag field vector to global frame and extract XY component
-		Vector<3> mag_earth = _q.conjugate(_mag);
+		Vector<3> mag_earth = quat.conjugate(_mag);
 		float mag_err = _wrap_pi(atan2f(mag_earth(1), mag_earth(0)) - _mag_decl);
 		// Project magnetometer correction to body frame
-		corr += _q.conjugate_inversed(Vector<3>(0.0f, 0.0f, -mag_err)) * _w_mag;
+		corr += quat.conjugate_inversed(Vector<3>(0.0f, 0.0f, -mag_err)) * _w_mag;
 	}
 
-	_q.normalize();
-
+	quat.normalize();
 
 	// Accelerometer correction
 	// Project 'k' unit vector of earth frame to body frame
-	// Vector<3> k = _q.conjugate_inversed(Vector<3>(0.0f, 0.0f, 1.0f));
+	// Vector<3> k = quat.conjugate_inversed(Vector<3>(0.0f, 0.0f, 1.0f));
 	// Optimized version with dropped zeros
-	Vector<3> k(
-		2.0f * (_q(1) * _q(3) - _q(0) * _q(2)),
-		2.0f * (_q(2) * _q(3) + _q(0) * _q(1)),
-		(_q(0) * _q(0) - _q(1) * _q(1) - _q(2) * _q(2) + _q(3) * _q(3))
+	Vector<3> kE(
+		2.0f * (quat(1) * quat(3) - quat(0) * quat(2)),
+		2.0f * (quat(2) * quat(3) + quat(0) * quat(1)),
+		(quat(0) * quat(0) - quat(1) * quat(1) - quat(2) * quat(2) + quat(3) * quat(3))
 	);
 
-	corr += (k % (_accel - _pos_acc).normalized()) * _w_accel;
+	//corr += (k % (_accel - _pos_acc).normalized()) * _w_accel;
+	corr += (kE % _accel.normalized()) * _w_accel;
 
 	// Gyro bias estimation
-	if (_gyro.length() < 1.0f) {
-		_gyro_bias += corr * (_w_gyro_bias * dt);
+	if (_gyro.length() < 0.175f) {
+		gyro_bias += corr * (_w_gyro_bias * dt);
 	}
 
 	for (int i = 0; i < 3; i++) {
-		_gyro_bias(i) = math::constrain(_gyro_bias(i), -_bias_max, _bias_max);
+		gyro_bias(i) = math::constrain(gyro_bias(i), -_bias_max, _bias_max);
 	}
 
-	_rates = _gyro + _gyro_bias;
+	rates = _gyro + gyro_bias;
 
 	// Feed forward gyro
-	corr += _rates;
+	corr += rates;
 
 	// Apply correction to state
-	_q += _q.derivative(corr) * dt;
+	quat += quat.derivative(corr) * dt;
 
 	// Normalize quaternion
-	_q.normalize();
+	quat.normalize();
 
-	if (!(PX4_ISFINITE(_q(0)) && PX4_ISFINITE(_q(1)) &&
-	      PX4_ISFINITE(_q(2)) && PX4_ISFINITE(_q(3)))) {
+	if (!(PX4_ISFINITE(quat(0)) && PX4_ISFINITE(quat(1)) &&
+	      PX4_ISFINITE(quat(2)) && PX4_ISFINITE(quat(3)))) {
 		// Reset quaternion to last good state
-		_q = q_last;
-		_rates.zero();
-		_gyro_bias.zero();
+		quat = q_last;
+		rates.zero();
+		gyro_bias.zero();
+		return false;
+	}
+
+	return true;
+}
+
+bool AttitudeEstimatorQ::update_centrip_comp(Quaternion & quat, Vector<3> & rates, Vector<3> & gyro_bias, float dt)
+{
+	if (!_inited) {
+
+		if (!_data_good) {
+			return false;
+		}
+
+		return init();
+	}
+
+	Quaternion q_last = quat;
+
+	// Angular rate of correction
+	Vector<3> corr;
+
+	float spinRate = _gyro.length();
+	if (_ext_hdg_mode > 0 && _ext_hdg_good) {
+		if (_ext_hdg_mode == 1) {
+			// Vision heading correction
+			// Project heading to global frame and extract XY component
+			Vector<3> vision_hdg_earth = quat.conjugate(_vision_hdg);
+			float vision_hdg_err = _wrap_pi(atan2f(vision_hdg_earth(1), vision_hdg_earth(0)));
+			// Project correction to body frame
+			corr += quat.conjugate_inversed(Vector<3>(0.0f, 0.0f, -vision_hdg_err)) * _w_ext_hdg;
+		}
+
+		if (_ext_hdg_mode == 2) {
+			// Mocap heading correction
+			// Project heading to global frame and extract XY component
+			Vector<3> mocap_hdg_earth = quat.conjugate(_mocap_hdg);
+			float mocap_hdg_err = _wrap_pi(atan2f(mocap_hdg_earth(1), mocap_hdg_earth(0)));
+			// Project correction to body frame
+			corr += quat.conjugate_inversed(Vector<3>(0.0f, 0.0f, -mocap_hdg_err)) * _w_ext_hdg;
+		}
+	}
+
+	if (_ext_hdg_mode == 0  || !_ext_hdg_good) {
+		// Magnetometer correction
+		// Project mag field vector to global frame and extract XY component
+		Vector<3> mag_earth = quat.conjugate(_mag);
+		float mag_err = _wrap_pi(atan2f(mag_earth(1), mag_earth(0)) - _mag_decl);
+		float gainMult = 1.0f;
+		const float fifty_dps = 0.873f;
+		if (spinRate > fifty_dps) {
+			gainMult = fmin(spinRate / fifty_dps, 10.0f);
+		}
+		// Project magnetometer correction to body frame
+		corr += quat.conjugate_inversed(Vector<3>(0.0f, 0.0f, -mag_err)) * _w_mag * gainMult;
+	}
+
+	quat.normalize();
+
+	// Accelerometer correction
+	// Project 'k' unit vector of earth frame to body frame
+	// Vector<3> k = quat.conjugate_inversed(Vector<3>(0.0f, 0.0f, 1.0f));
+	// Optimized version with dropped zeros
+	Vector<3> kE(
+		2.0f * (quat(1) * quat(3) - quat(0) * quat(2)),
+		2.0f * (quat(2) * quat(3) + quat(0) * quat(1)),
+		(quat(0) * quat(0) - quat(1) * quat(1) - quat(2) * quat(2) + quat(3) * quat(3))
+	);
+
+	// no slip: assuming earth frame centripetal accel is perpendicular to bodyX/earthZ plane
+//		Vector<3> centripA = Vector<3>(0.0f, 0.0f, 1.0f) % quat.conjugate(Vector<3>(1.0f, 0.0f, 0.0f));
+//		Vector<3> omegaE = quat.conjugate(_gyro);
+//		float omega = omegaE.data[2];
+
+	// assume rate of rotation is the rate of thrust vector rotation
+	Vector<3> thrE = quat.conjugate(Vector<3>(0.0f, 0.0f, 1.0f));
+	Vector<2> thrEh = Vector<2>(thrE.data[0], thrE.data[1]);
+	double last_thetaT = _thetaT;
+	static bool theta_init = true;
+	if (thrEh.length() > .01f) {
+		_thetaT = atan2(thrE.data[1], thrE.data[0]);
+		if (theta_init) {
+			theta_init = false;
+			last_thetaT = _thetaT;
+		}
+	} else {
+		theta_init = true;
+	}
+	double dtheta = _wrap_pi(_thetaT - last_thetaT);
+	float omegaE = _lp_omega.apply((float)dtheta / dt);
+	_centrip.thetaT = _thetaT;
+	_centrip.omegaE = omegaE;
+	_centrip.tV = 0.0f;
+	_centrip.Vt[0] = 0.0f;
+	_centrip.Vt[1] = 0.0f;
+	_centrip.centripMag = 0.0f;
+
+	float omegaMag = fabsf(omegaE);
+	if (omegaMag > 0.5f) {
+		// estimate centripetal acceleration in the earth frame
+		Vector<3> aE = quat.conjugate(_accel);
+		Vector<3> centripE = aE - Vector<3>(0.0f, 0.0f, -9.925f);
+		_centrip.centripMag = centripE.length();
+
+		// estimate tangential velocity in earth frame
+		_centrip.tV = fminf(fabs(_centrip.centripMag / omegaE), 20.0f);
+
+		// thrust vector: assuming omegaE cross V = centripE (and measured aE is purely centripetal)
+		Vector<2> Vt = Vector<2>(omegaE * centripE.data[1], -omegaE * centripE.data[0]);
+		_centrip.Vt[0] = Vt.data[0];
+		_centrip.Vt[1] = Vt.data[1];
+
+		// estimate actual centripetal accel using Vt and centripMag
+		Vector<3> centripA = Vector<3>(Vt.data[0], Vt.data[1], 0.0f);
+//		Vector<3> estG = aE - centripA;
+
+		// log estimate of g vector
+		Vector<3> estG = quat.conjugate(_accel.normalized());
+
+		/* compensate body frame accel for centripetal accel */
+		/* estimated g vector in body frame is (_accel - centripetal accel) */
+		//		corr += (kE % (_accel - quat.conjugate_inversed(centripE)).normalized()) * _w_accel;
+
+		for (int i=0; i<3; i++) {
+			_centrip.aE[i] = aE.data[i];
+			_centrip.centripE[i] = centripE.data[i];
+			_centrip.estG[i] = estG.data[i];
+		}
+	}
+
+	// earth frame magnetometer reference vector
+	Vector<3> magRefE(0.229f, -0.006f, 0.368f);
+	// transform to body frame and normalize
+	Vector<3> magRef = quat.conjugate_inversed(magRefE).normalized();
+	// delay the reference value for comparison with current magnetometer value
+	_delay_buff[_delay_index] = magRef;
+	_delay_index++;
+	if (_delay_index > 9) _delay_index = 0;
+	int cur_index = _delay_index - 8;
+	if (cur_index < 0) cur_index += 10;
+
+	// in body frame:
+	Vector<3> mag_n = _mag.normalized();
+	// sensor reading crossed with delayed magnetic reference
+	Vector<3> mag_err = mag_n % _delay_buff[cur_index];
+
+	Vector<3> magE = quat.conjugate(_mag);
+	for (int i=0; i<3; i++) {
+		_centrip.mag_n[i] = mag_n.data[i];
+		_centrip.magE[i] = magE.data[i];
+		_centrip.mag_err[i] = mag_err.data[i];
+	}
+
+	/* estimated g vector in body frame is (_accel - centripetal accel) */
+//		corr += (kE % (_accel - quat.conjugate_inversed(centripE)).normalized()) * _w_accel;
+
+	/* compensate orientation using either g or mag vector */
+	if (spinRate < 0.175f) {
+
+//		corr += (k % (_accel - _pos_acc).normalized()) * _w_accel;
+		corr += (kE % _accel.normalized()) * _w_accel;
+
+		// Gyro bias estimation
+		// If rotation rate is below about 10 deg/sec
+		// (see Bill Premerlani's paper: http://gentlenav.googlecode.com/files/fastRotations.pdf)
+		gyro_bias += corr * (_w_gyro_bias * dt);
+
+		for (int i = 0; i < 3; i++) {
+			gyro_bias(i) = math::constrain(gyro_bias(i), -_bias_max, _bias_max);
+		}
+
+	} else {
+		// 3D magnetometer correction in body frame only
+		corr += mag_err * 0.00025f;
+	}
+
+	rates = _gyro + gyro_bias;
+
+	// Feed forward gyro
+	corr += rates;
+
+	// Apply correction to state
+	quat += quat.derivative(corr) * dt;
+
+	// Normalize quaternion
+	quat.normalize();
+
+	if (!(PX4_ISFINITE(quat(0)) && PX4_ISFINITE(quat(1)) &&
+	      PX4_ISFINITE(quat(2)) && PX4_ISFINITE(quat(3)))) {
+		// Reset quaternion to last good state
+		quat = q_last;
+		rates.zero();
+		gyro_bias.zero();
 		return false;
 	}
 
