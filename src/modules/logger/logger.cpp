@@ -42,6 +42,7 @@
 #include <px4_includes.h>
 #include <px4_getopt.h>
 #include <px4_log.h>
+#include <uORB/topics/bw_test.h>
 
 //#define DBGPRINT //write status output every few seconds
 
@@ -163,15 +164,15 @@ void Logger::status()
 	} else {
 		PX4_INFO("Running");
 
-		float kibibytes = _writer.get_total_written() / 1024.0f;
+		float kibibytes = (float)_writer.get_total_written() / 1024.0f;
 		float mebibytes = kibibytes / 1024.0f;
 		float seconds = ((float)(hrt_absolute_time() - _start_time)) / 1000000.0f;
 
 		PX4_INFO("Wrote %4.2f MiB (avg %5.2f KiB/s)", (double)mebibytes, (double)(kibibytes / seconds));
 		PX4_INFO("Dropouts: %zu (max len: %.3f s), max used buffer: %zu / %zu B",
 			 _write_dropouts, (double)_max_dropout_duration, _high_water, _writer.get_buffer_size());
-		_high_water = 0;
-		_max_dropout_duration = 0.f;
+//		_high_water = 0;
+//		_max_dropout_duration = 0.f;
 	}
 }
 
@@ -291,7 +292,7 @@ struct message_parameter_header_s {
 #pragma pack(pop)
 
 
-static constexpr size_t MAX_DATA_SIZE = 740;
+static constexpr size_t MAX_DATA_SIZE = 800;
 
 Logger::Logger(size_t buffer_size, unsigned log_interval, bool log_on_start) :
 	_log_on_start(log_on_start),
@@ -420,6 +421,16 @@ void Logger::run()
 
 	PX4_INFO("logger started");
 
+	struct bw_test_s	bw_test;
+	for (int i=0; i<(sizeof(bw_test.data)/sizeof(int8_t)); i++) {
+		bw_test.data[i] = i;
+	}
+	orb_advert_t bw_test_pub = orb_advertise(ORB_ID(bw_test), &bw_test);
+	int pstat = orb_publish(ORB_ID(bw_test), bw_test_pub, &bw_test);
+	PX4_INFO("pub stat: %d", pstat);
+
+	add_topic("bw_test");
+
 	int mkdir_ret = mkdir(LOG_ROOT, S_IRWXU | S_IRWXG | S_IRWXO);
 
 	if (mkdir_ret == 0) {
@@ -443,27 +454,27 @@ void Logger::run()
 	}
 
 
-	add_topic("sensor_gyro", 0);
-	add_topic("sensor_accel", 0);
-	add_topic("vehicle_rates_setpoint", 10);
-	add_topic("vehicle_attitude_setpoint", 10);
-	add_topic("vehicle_attitude", 0);
-	add_topic("actuator_outputs", 50);
-	add_topic("battery_status", 100);
-	add_topic("vehicle_command", 100);
-	add_topic("actuator_controls", 10);
-	add_topic("vehicle_local_position_setpoint", 200);
-	add_topic("rc_channels", 20);
-//	add_topic("ekf2_innovations", 20);
-	add_topic("commander_state", 100);
-	add_topic("vehicle_local_position", 200);
-	add_topic("vehicle_global_position", 200);
-	add_topic("system_power", 100);
-	add_topic("servorail_status", 200);
-	add_topic("mc_att_ctrl_status", 50);
-//	add_topic("control_state");
-//	add_topic("estimator_status");
-	add_topic("vehicle_status", 200);
+//	add_topic("sensor_gyro", 0);
+//	add_topic("sensor_accel", 0);
+//	add_topic("vehicle_rates_setpoint", 10);
+//	add_topic("vehicle_attitude_setpoint", 10);
+//	add_topic("vehicle_attitude", 0);
+//	add_topic("actuator_outputs", 50);
+//	add_topic("battery_status", 100);
+//	add_topic("vehicle_command", 100);
+//	add_topic("actuator_controls", 10);
+//	add_topic("vehicle_local_position_setpoint", 200);
+//	add_topic("rc_channels", 20);
+////	add_topic("ekf2_innovations", 20);
+//	add_topic("commander_state", 100);
+//	add_topic("vehicle_local_position", 200);
+//	add_topic("vehicle_global_position", 200);
+//	add_topic("system_power", 100);
+//	add_topic("servorail_status", 200);
+//	add_topic("mc_att_ctrl_status", 50);
+////	add_topic("control_state");
+////	add_topic("estimator_status");
+//	add_topic("vehicle_status", 200);
 
 	if (!_writer.init()) {
 		PX4_ERR("logger: init of writer failed");
@@ -492,6 +503,9 @@ void Logger::run()
 
 	/* every log_interval usec, check for orb updates */
 	while (!_task_should_exit) {
+		// publish data
+		pstat = orb_publish(ORB_ID(bw_test), bw_test_pub, &bw_test);
+//		PX4_INFO("pub stat: %d", pstat);
 
 		// Start/stop logging when system arm/disarm
 		if (_vehicle_status_sub->check_updated()) {
@@ -590,6 +604,7 @@ void Logger::run()
 
 			if (!_dropout_start && _writer.get_buffer_fill_count() > _high_water) {
 				_high_water = _writer.get_buffer_fill_count();
+				status();
 			}
 
 			/* release the log buffer */
