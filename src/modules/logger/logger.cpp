@@ -422,6 +422,7 @@ void Logger::run()
 	PX4_INFO("logger started");
 
 	struct bw_test_s	bw_test;
+	bw_test.timestamp = hrt_absolute_time();
 	for (int i=0; i<(sizeof(bw_test.data)/sizeof(int8_t)); i++) {
 		bw_test.data[i] = i;
 	}
@@ -504,8 +505,8 @@ void Logger::run()
 	/* every log_interval usec, check for orb updates */
 	while (!_task_should_exit) {
 		// publish data
+		bw_test.timestamp = hrt_absolute_time();
 		pstat = orb_publish(ORB_ID(bw_test), bw_test_pub, &bw_test);
-//		PX4_INFO("pub stat: %d", pstat);
 
 		// Start/stop logging when system arm/disarm
 		if (_vehicle_status_sub->check_updated()) {
