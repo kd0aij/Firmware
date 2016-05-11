@@ -423,14 +423,16 @@ void Logger::run()
 
 	struct bw_test_s* bw_testp = (struct bw_test_s*)malloc(sizeof(struct bw_test_s));
 	bw_testp->timestamp = hrt_absolute_time();
-	for (int i=0; i<(sizeof(bw_testp->data)/sizeof(int8_t)); i++) {
+	const char * test_buf_id = "bw_test_record";
+	memcpy(&bw_testp->data, test_buf_id, strlen(test_buf_id));
+	for (int i=strlen(test_buf_id); i<(sizeof(bw_testp->data)/sizeof(int8_t)); i++) {
 		bw_testp->data[i] = i & 0xFF;
 	}
-	orb_advert_t bw_test_pub = orb_advertise(ORB_ID(bw_test), bw_testp);
-	int pstat = orb_publish(ORB_ID(bw_test), bw_test_pub, bw_testp);
-	PX4_INFO("pub stat: %d", pstat);
-
-	add_topic("bw_test");
+//	orb_advert_t bw_test_pub = orb_advertise(ORB_ID(bw_test), bw_testp);
+//	int pstat = orb_publish(ORB_ID(bw_test), bw_test_pub, bw_testp);
+//	PX4_INFO("pub stat: %d", pstat);
+//
+//	add_topic("bw_test");
 
 	int mkdir_ret = mkdir(LOG_ROOT, S_IRWXU | S_IRWXG | S_IRWXO);
 
@@ -502,110 +504,62 @@ void Logger::run()
 		start_log();
 	}
 
+	uint32_t total_bytes = 0;
+	hrt_abstime timer_start = hrt_absolute_time();
+
 	/* every log_interval usec, check for orb updates */
 	while (!_task_should_exit) {
-		// publish data
-		bw_testp->timestamp = hrt_absolute_time();
-		pstat = orb_publish(ORB_ID(bw_test), bw_test_pub, bw_testp);
-
-		// Start/stop logging when system arm/disarm
-		if (_vehicle_status_sub->check_updated()) {
-			_vehicle_status_sub->update();
-			bool armed = (_vehicle_status_sub->get().arming_state == vehicle_status_s::ARMING_STATE_ARMED) ||
-				     (_vehicle_status_sub->get().arming_state == vehicle_status_s::ARMING_STATE_ARMED_ERROR);
-
-			if (_enabled != armed && !_log_on_start) {
-				if (armed) {
-					start_log();
-
-#ifdef DBGPRINT
-					timer_start = hrt_absolute_time();
-					total_bytes = 0;
-#endif /* DBGPRINT */
-
-				} else {
-					stop_log();
-				}
-			}
-		}
+//		// publish data
+//		bw_testp->timestamp = hrt_absolute_time();
+//		pstat = orb_publish(ORB_ID(bw_test), bw_test_pub, bw_testp);
 
 		if (_enabled) {
 
 			bool data_written = false;
 
-			/* Check if parameters have changed */
-			// this needs to change to a timestamped record to record a history of parameter changes
-			if (_parameter_update_sub->check_updated()) {
-				warnx("parameter update");
-				_parameter_update_sub->update();
-				write_changed_parameters();
-			}
-
-			// Write data messages for normal subscriptions
-			int msg_id = 0;
-
 			/* wait for lock on log buffer */
 			_writer.lock();
 
-			for (LoggerSubscription &sub : _subscriptions) {
-				/* each message consists of a header followed by an orb data object
-				 */
-				size_t msg_size = sizeof(message_data_header_s) + sub.metadata->o_size;
-				//TODO: use sub.metadata->o_size_no_padding
-				uint8_t buffer[msg_size];
+			// fill ringbuffer at desired rate
+			hrt_abstime delWrite = hrt_elapsed_time(&_lastWrite);
+			uint16_t writeLen = 150 * 1000 * (float)delWrite / 1.0e6f;
+			if (writeLen >= sizeof(bw_testp->data)) {
+				warnx("writeLen %d > buffer size: %zu", writeLen, sizeof(bw_testp->data));
+				writeLen = sizeof(bw_testp->data);
+			}
 
-				/* if this topic has been updated, copy the new data into the message buffer
-				 * and write a message to the log
-				 */
-				for (uint8_t instance = 0; instance < ORB_MULTI_MAX_INSTANCES; instance++) {
-					if (copy_if_updated_multi(sub.metadata, instance, &sub.fd[instance], buffer + sizeof(message_data_header_s),
-								  &sub.time_tried_subscribe)) {
 
-						message_data_header_s *header = reinterpret_cast<message_data_header_s *>(buffer);
-						header->msg_type = static_cast<uint8_t>(MessageType::DATA);
-						header->msg_size = static_cast<uint16_t>(msg_size - 3);
-						header->msg_id = msg_id;
-						header->multi_id = 0x80 + instance;	// Non multi, active
+			bw_testp->timestamp = hrt_absolute_time();
+			if (_writer.write(bw_testp, writeLen)) {
 
-						//PX4_INFO("topic: %s, size = %zu, out_size = %zu", sub.metadata->o_name, sub.metadata->o_size, msg_size);
+				total_bytes += writeLen;
+				_lastWrite = hrt_absolute_time();
 
-						if (_writer.write(buffer, msg_size)) {
+				if (_dropout_start) {
+					float dropout_duration = (float)(hrt_elapsed_time(&_dropout_start) / 1000) / 1.e3f;
 
-#ifdef DBGPRINT
-							total_bytes += msg_size;
-#endif /* DBGPRINT */
-
-							if (_dropout_start) {
-								float dropout_duration = (float)(hrt_elapsed_time(&_dropout_start) / 1000) / 1.e3f;
-
-								if (dropout_duration > _max_dropout_duration) {
-									_max_dropout_duration = dropout_duration;
-								}
-
-								_dropout_start = 0;
-							}
-
-							data_written = true;
-
-						} else {
-
-							if (!_dropout_start) {
-								_dropout_start = hrt_absolute_time();
-								++_write_dropouts;
-								_high_water = 0;
-							}
-
-							break;	// Write buffer overflow, skip this record
-						}
+					if (dropout_duration > _max_dropout_duration) {
+						_max_dropout_duration = dropout_duration;
 					}
+
+					_dropout_start = 0;
 				}
 
-				msg_id++;
+				data_written = true;
+
+			} else {
+
+				if (!_dropout_start) {
+					_dropout_start = hrt_absolute_time();
+					++_write_dropouts;
+					_high_water = 0;
+				}
+
+				break;	// Write buffer overflow, skip this record
 			}
 
 			if (!_dropout_start && _writer.get_buffer_fill_count() > _high_water) {
 				_high_water = _writer.get_buffer_fill_count();
-				status();
 			}
 
 			/* release the log buffer */
@@ -616,26 +570,33 @@ void Logger::run()
 				_writer.notify();
 			}
 
-#ifdef DBGPRINT
-			double deltat = (double)(hrt_absolute_time() - timer_start)  * 1e-6;
+			double deltat = (double)(hrt_elapsed_time(&timer_start))  * 1e-6;
 
-			if (deltat > 4.0) {
-				alloc_info = mallinfo();
+			if (deltat > 10.0) {
 				double throughput = total_bytes / deltat;
-				PX4_INFO("%8.1f kB/s, %zu highWater,  %d dropouts, %5.3f sec max, free heap: %d",
-					 throughput / 1.e3, _high_water, _write_dropouts, (double)_max_dropout_duration,
-					 alloc_info.fordblks);
+				warnx("%8.1f kB/s, %zu highWater", throughput / 1.e3, _high_water);
 
-				_high_water = 0;
-				_max_dropout_duration = 0.f;
 				total_bytes = 0;
 				timer_start = hrt_absolute_time();
 			}
 
-#endif /* DBGPRINT */
-
 		}
 
+//		hrt_abstime collectDuration = hrt_elapsed_time(&_nextCollect);
+//		hrt_abstime now = hrt_absolute_time();
+//		// "schedule" next collection N intervals from _starttime
+//		_nextCollect += _log_interval;
+//		if (collectDuration < _log_interval) {
+//			hrt_abstime remInterval = _log_interval - collectDuration;
+////			warnx("now: %llu, duration: %llu, nextCollect: %llu, remInterval: %llu",
+////					now, collectDuration, _nextCollect, remInterval);
+//			usleep(remInterval - 100);
+//		} else {
+//			_nextCollect = now + _log_interval;
+//			warnx("timing slip: now: %llu, duration: %llu, nextCollect: %llu, _log_interval: %d",
+//					now, collectDuration, _nextCollect, _log_interval);
+//			usleep(_log_interval - 100);
+//		}
 		usleep(_log_interval);
 	}
 
@@ -740,12 +701,14 @@ void Logger::start_log()
 	}
 
 	_writer.start_log(file_name);
-	write_version();
-	write_formats();
-	write_parameters();
+//	write_version();
+//	write_formats();
+//	write_parameters();
 	_writer.notify();
 	_enabled = true;
 	_start_time = hrt_absolute_time();
+	_nextCollect = _start_time;
+	_lastWrite = _start_time;
 }
 
 void Logger::stop_log()

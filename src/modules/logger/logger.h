@@ -134,7 +134,9 @@ private:
 
 	// statistics
 	hrt_abstime					_start_time; ///< Time when logging started (not the logger thread)
+	hrt_abstime 				_nextCollect; ///< desired time for next collection
 	hrt_abstime					_dropout_start = 0; ///< start of current dropout (0 = no dropout)
+	hrt_abstime 				_lastWrite;
 	float						_max_dropout_duration = 0.f; ///< max duration of dropout [s]
 	size_t						_write_dropouts = 0; ///< failed buffer writes due to buffer overflow
 	size_t						_high_water = 0; ///< maximum used write buffer
