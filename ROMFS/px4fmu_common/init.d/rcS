@@ -48,5 +48,5 @@ fi
 	#
 	uorb start
 
-	logger start -b 100 -e -r 180
+	logger start -b 150 -e -r 200
 	

@@ -292,7 +292,7 @@ struct message_parameter_header_s {
 #pragma pack(pop)
 
 
-static constexpr size_t MAX_DATA_SIZE = 800;
+static constexpr size_t MAX_DATA_SIZE = 1024;
 
 Logger::Logger(size_t buffer_size, unsigned log_interval, bool log_on_start) :
 	_log_on_start(log_on_start),
@@ -421,13 +421,13 @@ void Logger::run()
 
 	PX4_INFO("logger started");
 
-	struct bw_test_s	bw_test;
-	bw_test.timestamp = hrt_absolute_time();
-	for (int i=0; i<(sizeof(bw_test.data)/sizeof(int8_t)); i++) {
-		bw_test.data[i] = i;
+	struct bw_test_s* bw_testp = (struct bw_test_s*)malloc(sizeof(struct bw_test_s));
+	bw_testp->timestamp = hrt_absolute_time();
+	for (int i=0; i<(sizeof(bw_testp->data)/sizeof(int8_t)); i++) {
+		bw_testp->data[i] = i & 0xFF;
 	}
-	orb_advert_t bw_test_pub = orb_advertise(ORB_ID(bw_test), &bw_test);
-	int pstat = orb_publish(ORB_ID(bw_test), bw_test_pub, &bw_test);
+	orb_advert_t bw_test_pub = orb_advertise(ORB_ID(bw_test), bw_testp);
+	int pstat = orb_publish(ORB_ID(bw_test), bw_test_pub, bw_testp);
 	PX4_INFO("pub stat: %d", pstat);
 
 	add_topic("bw_test");
@@ -505,8 +505,8 @@ void Logger::run()
 	/* every log_interval usec, check for orb updates */
 	while (!_task_should_exit) {
 		// publish data
-		bw_test.timestamp = hrt_absolute_time();
-		pstat = orb_publish(ORB_ID(bw_test), bw_test_pub, &bw_test);
+		bw_testp->timestamp = hrt_absolute_time();
+		pstat = orb_publish(ORB_ID(bw_test), bw_test_pub, bw_testp);
 
 		// Start/stop logging when system arm/disarm
 		if (_vehicle_status_sub->check_updated()) {
