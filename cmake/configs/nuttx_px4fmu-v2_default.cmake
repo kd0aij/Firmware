@@ -18,7 +18,7 @@ set(config_module_list
 	drivers/boards/px4fmu-v2
 	drivers/rgbled
 	drivers/mpu6000
-	drivers/mpu9250
+#	drivers/mpu9250
 	drivers/lsm303d
 	drivers/l3gd20
 	drivers/hmc5883
@@ -76,7 +76,7 @@ set(config_module_list
 	modules/navigator
 	modules/mavlink
 	modules/gpio_led
-	modules/uavcan
+#	modules/uavcan
 	modules/land_detector
 
 	#
@@ -100,7 +100,7 @@ set(config_module_list
 	#
 	# Logging
 	#
-	modules/logger
+#	modules/logger
 	modules/sdlog2
 
 	#
@@ -178,8 +178,8 @@ set(config_io_board
 	)
 
 set(config_extra_libs
-	uavcan
-	uavcan_stm32_driver
+#	uavcan
+#	uavcan_stm32_driver
 	)
 
 set(config_io_extra_libs
