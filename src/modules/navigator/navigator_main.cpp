@@ -329,6 +329,7 @@ Navigator::task_main()
 	fds[1].events = POLLIN;
 
 	bool global_pos_available_once = false;
+	bool timeout_announced = false;
 
 	while (!_task_should_exit) {
 
@@ -338,7 +339,10 @@ Navigator::task_main()
 		if (pret == 0) {
 			/* timed out - periodic check for _task_should_exit, etc. */
 			if (global_pos_available_once) {
-				PX4_WARN("navigator timed out");
+				if (!timeout_announced) {
+					PX4_WARN("navigator timed out");
+					timeout_announced = true;
+				}
 			}
 			continue;
 
@@ -349,6 +353,7 @@ Navigator::task_main()
 		}
 
 		global_pos_available_once = true;
+		timeout_announced = false;
 
 		perf_begin(_loop_perf);
 
