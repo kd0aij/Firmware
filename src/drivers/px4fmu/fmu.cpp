@@ -167,6 +167,10 @@ private:
 	hrt_abstime _rc_scan_begin = 0;
 	bool _rc_scan_locked = false;
 	bool _report_lock = true;
+	unsigned sbus_drop_count = 0;
+
+	int32_t _wifi_tx_mode = 1;
+	param_t _wifi_tx_param = PARAM_INVALID;
 
 	hrt_abstime _cycle_timestamp = 0;
 	hrt_abstime _last_safety_check = 0;
@@ -273,6 +277,7 @@ private:
 	void rc_io_invert();
 	void rc_io_invert(bool invert);
 	void safety_check_button(void);
+	void setWIFIstate(int32_t mode, bool armed);
 };
 
 const PX4FMU::GPIOConfig PX4FMU::_gpio_tab[] =	BOARD_FMU_GPIO_TAB;
@@ -869,6 +874,26 @@ PX4FMU::update_pwm_out_state(bool on)
 	up_pwm_servo_arm(on);
 }
 
+void PX4FMU::setWIFIstate(int32_t wifi_mode, bool armed) {
+	switch (wifi_mode) {
+	case 0: /* always off */
+		WIFI_TX(0)
+		;
+		break;
+	case 1: /* off when armed */
+		if (armed) {
+			WIFI_TX(0);
+		} else {
+			WIFI_TX(1);
+		}
+		break;
+	case 2: /* always on */
+		WIFI_TX(1)
+		;
+		break;
+	}
+}
+
 void
 PX4FMU::cycle()
 {
@@ -884,6 +909,14 @@ PX4FMU::cycle()
 		pwm_limit_init(&_pwm_limit);
 
 		update_pwm_rev_mask();
+
+		/* read wifi TX control parameter and init the TX enable pin */
+		_wifi_tx_param = param_find("WIFI_TX_MODE");
+		param_get(_wifi_tx_param, &_wifi_tx_mode);
+		if (_wifi_tx_mode != 0) {
+			/* WIFI should be on at boot time */
+			WIFI_TX(1);
+		}
 
 #ifdef RC_SERIAL_PORT
 		// dsm_init sets some file static variables and returns a file descriptor
@@ -1101,6 +1134,9 @@ PX4FMU::cycle()
 		/* update the armed status and check that we're not locked down */
 		_throttle_armed = _safety_off && _armed.armed && !_armed.lockdown;
 
+		/* update WIFI TX state */
+		setWIFIstate(_wifi_tx_mode, _armed.armed);
+
 		/* update PWM status if armed or if disarmed PWM values are set */
 		bool pwm_on = _armed.armed || _num_disarmed_set > 0;
 
@@ -1130,6 +1166,10 @@ PX4FMU::cycle()
 			dsm_bind_val = -1;
 			param_set(dsm_bind_param, &dsm_bind_val);
 		}
+
+		/* check for update to WIFI control parameter */
+		param_get(_wifi_tx_param, &_wifi_tx_mode);
+		setWIFIstate(_wifi_tx_mode, _armed.armed);
 	}
 
 	/* update ADC sampling */
@@ -1202,6 +1242,22 @@ PX4FMU::cycle()
 				if (rc_updated) {
 					// we have a new SBUS frame. Publish it.
 					_rc_in.input_source = input_rc_s::RC_INPUT_SOURCE_PX4FMU_SBUS;
+
+					if (sbus_frame_drop) {
+						if (sbus_drop_count > 50) {
+							// lost RC link
+							sbus_failsafe = true;	/* this has no effect */
+							_armed.lockdown = true;
+
+						} else {
+							sbus_drop_count++;
+							warnx("sbus frame drops: %d", sbus_drop_count);
+						}
+
+					} else {
+						sbus_drop_count = 0;
+					}
+
 					fill_rc_in(raw_rc_count, raw_rc_values, _cycle_timestamp,
 						   sbus_frame_drop, sbus_failsafe, frame_drops);
 					_rc_scan_locked = true;
@@ -2114,6 +2170,8 @@ PX4FMU::write(file *filp, const char *buffer, size_t len)
 void
 PX4FMU::sensor_reset(int ms)
 {
+#if defined(CONFIG_ARCH_BOARD_PX4FMU_V2)
+
 	if (ms < 1) {
 		ms = 1;
 	}
