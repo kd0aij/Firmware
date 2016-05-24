@@ -188,6 +188,7 @@ __EXPORT int nsh_archinitialize(void)
 
 	/* configure power supply control/sense pins */
 	px4_arch_configgpio(GPIO_PERIPH_3V3_EN);
+	px4_arch_configgpio(GPIO_PERIPH_3V3_EN, 0);	/* disable the 8266 */
 	px4_arch_configgpio(GPIO_VDD_BRICK_VALID);
 
 	px4_arch_configgpio(GPIO_SBUS_INV);
