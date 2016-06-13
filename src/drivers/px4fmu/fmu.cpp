@@ -2170,8 +2170,6 @@ PX4FMU::write(file *filp, const char *buffer, size_t len)
 void
 PX4FMU::sensor_reset(int ms)
 {
-#if defined(CONFIG_ARCH_BOARD_PX4FMU_V2)
-
 	if (ms < 1) {
 		ms = 1;
 	}
