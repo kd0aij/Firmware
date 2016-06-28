@@ -797,17 +797,23 @@ bool AttitudeEstimatorQ::update(float dt)
 
 	_q.normalize();
 
-	// Accelerometer correction
-	// Project 'k' unit vector of earth frame to body frame
-	// Vector<3> k = _q.conjugate_inversed(Vector<3>(0.0f, 0.0f, 1.0f));
-	// Optimized version with dropped zeros
-	Vector<3> k(
-		2.0f * (_q(1) * _q(3) - _q(0) * _q(2)),
-		2.0f * (_q(2) * _q(3) + _q(0) * _q(1)),
-		(_q(0) * _q(0) - _q(1) * _q(1) - _q(2) * _q(2) + _q(3) * _q(3))
-	);
+	// If rotation rate is below about 10 deg/sec (see http://gentlenav.googlecode.com/files/fastRotations.pdf)
+	if (_gyro.length() < 0.18f) {
 
-	corr += (k % (_accel - _pos_acc).normalized()) * _w_accel;
+		// Accelerometer correction
+		// Project 'k' unit vector of earth frame to body frame
+		// Vector<3> k = _q.conjugate_inversed(Vector<3>(0.0f, 0.0f, 1.0f));
+		// Optimized version with dropped zeros
+		Vector<3> k(
+			2.0f * (_q(1) * _q(3) - _q(0) * _q(2)),
+			2.0f * (_q(2) * _q(3) + _q(0) * _q(1)),
+			(_q(0) * _q(0) - _q(1) * _q(1) - _q(2) * _q(2) + _q(3) * _q(3))
+		);
+
+		corr += (k % (_accel - _pos_acc).normalized()) * _w_accel;
+	} else {
+		// estimate centripetal acceleration
+	}
 
 	// Gyro bias estimation
 	_gyro_bias += corr * (_w_gyro_bias * dt);
