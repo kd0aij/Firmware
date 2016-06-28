@@ -797,7 +797,8 @@ bool AttitudeEstimatorQ::update(float dt)
 
 	_q.normalize();
 
-	// If rotation rate is below about 10 deg/sec (see http://gentlenav.googlecode.com/files/fastRotations.pdf)
+	// If rotation rate is below about 10 deg/sec
+	// (see Bill Premerlani's paper: http://gentlenav.googlecode.com/files/fastRotations.pdf)
 	if (_gyro.length() < 0.18f) {
 
 		// Accelerometer correction
@@ -810,9 +811,28 @@ bool AttitudeEstimatorQ::update(float dt)
 			(_q(0) * _q(0) - _q(1) * _q(1) - _q(2) * _q(2) + _q(3) * _q(3))
 		);
 
-		corr += (k % (_accel - _pos_acc).normalized()) * _w_accel;
+//		corr += (k % (_accel - _pos_acc).normalized()) * _w_accel;
+		corr += (k % _accel.normalized()) * _w_accel;
+
 	} else {
-		// estimate centripetal acceleration
+		// estimate centripetal acceleration in the earth frame
+		Vector<3> centripE = _q.conjugate_inversed(_accel) - Vector<3>(0.0f, 0.0f, -9.8f);
+		float centripMag = centripE.length();
+
+		// estimate tangential velocity
+		Vector<3> omegaE = _q.conjugate_inversed(_gyro);
+		float tV = centripMag / omegaE.data[2];
+		tV *= 1.0f;
+
+		// construct centripetal accel vector
+		Vector<3> k(
+			2.0f * (_q(1) * _q(3) - _q(0) * _q(2)),
+			2.0f * (_q(2) * _q(3) + _q(0) * _q(1)),
+			(_q(0) * _q(0) - _q(1) * _q(1) - _q(2) * _q(2) + _q(3) * _q(3))
+		);
+		// assuming direction is perpendicular to bodyX/earthZ plane
+		Vector<3> tangentE = _q.conjugate_inversed(Vector<3>(1.0f, 0.0f, 0.0f));
+		Vector<3> est_centripA = (k % tangentE) * centripMag;
 	}
 
 	// Gyro bias estimation
