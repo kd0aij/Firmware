@@ -52,6 +52,7 @@
 #include <limits.h>
 #include <math.h>
 #include <uORB/uORB.h>
+#include <uORB/topics/centripetal.h>
 #include <uORB/topics/sensor_combined.h>
 #include <uORB/topics/vehicle_attitude.h>
 #include <uORB/topics/control_state.h>
@@ -129,6 +130,7 @@ private:
 	orb_advert_t	_att_pub = nullptr;
 	orb_advert_t	_ctrl_state_pub = nullptr;
 	orb_advert_t	_est_state_pub = nullptr;
+	orb_advert_t	_centripetal_pub = nullptr;
 
 	struct {
 		param_t	w_acc;
@@ -163,6 +165,8 @@ private:
 
 	vision_position_estimate_s _vision = {};
 	Vector<3>	_vision_hdg;
+
+	struct centripetal_s _centrip;
 
 	att_pos_mocap_s _mocap = {};
 	Vector<3>	_mocap_hdg;
@@ -567,9 +571,12 @@ void AttitudeEstimatorQ::task_main()
 			dt = _dt_max;
 		}
 
+		_centrip.timestamp = sensors.timestamp;
 		if (!update(dt)) {
 			continue;
 		}
+		int cinst;
+		orb_publish_auto(ORB_ID(centripetal), &_centripetal_pub, &_centrip, &cinst, ORB_PRIO_HIGH);
 
 		Vector<3> euler = _q.to_euler();
 
@@ -815,6 +822,7 @@ bool AttitudeEstimatorQ::update(float dt)
 		corr += (k % _accel.normalized()) * _w_accel;
 
 	} else {
+
 		// estimate centripetal acceleration in the earth frame
 		Vector<3> centripE = _q.conjugate_inversed(_accel) - Vector<3>(0.0f, 0.0f, -9.8f);
 		float centripMag = centripE.length();
@@ -832,7 +840,17 @@ bool AttitudeEstimatorQ::update(float dt)
 		);
 		// assuming direction is perpendicular to bodyX/earthZ plane
 		Vector<3> tangentE = _q.conjugate_inversed(Vector<3>(1.0f, 0.0f, 0.0f));
-		Vector<3> est_centripA = (k % tangentE) * centripMag;
+		Vector<3> centripA = (k % tangentE) * centripMag;
+
+		for (int i=0; i<3; i++) {
+			_centrip.centripE[i] = centripE.data[i];
+			_centrip.centripA[i] = centripA.data[i];
+			_centrip.omegaE[i] = omegaE.data[i];
+			_centrip.tangentE[i] = tangentE.data[i];
+		}
+		_centrip.centripMag = centripMag;
+		_centrip.tV = tV;
+
 	}
 
 	// Gyro bias estimation
