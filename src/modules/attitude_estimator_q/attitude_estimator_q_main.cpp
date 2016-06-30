@@ -824,32 +824,37 @@ bool AttitudeEstimatorQ::update(float dt)
 	} else {
 
 		// estimate centripetal acceleration in the earth frame
-		Vector<3> centripE = _q.conjugate_inversed(_accel) - Vector<3>(0.0f, 0.0f, -9.8f);
-		float centripMag = centripE.length();
+		//warnx("_accel: (%8.3f, %8.3f, %8.3f)", (double)_accel.data[0], (double)_accel.data[1], (double)_accel.data[2]);
+		Vector<3> aE = _q.conjugate(_accel);
+		//warnx("aE: (%8.3f, %8.3f, %8.3f)", (double)aE.data[0], (double)aE.data[1], (double)aE.data[2]);
+		Vector<3> centripE = aE - Vector<3>(0.0f, 0.0f, -9.8f);
+		//warnx("centripE: (%8.3f, %8.3f, %8.3f)", (double)centripE.data[0], (double)centripE.data[1], (double)centripE.data[2]);
 
-		// estimate tangential velocity
-		Vector<3> omegaE = _q.conjugate_inversed(_gyro);
-		float tV = centripMag / omegaE.data[2];
-		tV *= 1.0f;
+		// estimate tangential velocity in earth frame
+		Vector<3> omegaE = _q.conjugate(_gyro);
+		_centrip.tV = abs(_centrip.centripMag / omegaE.data[2]);
 
-		// construct centripetal accel vector
+		// construct centripetal accel vector in body frame
+		// k = earth z axis in body frame
 		Vector<3> k(
 			2.0f * (_q(1) * _q(3) - _q(0) * _q(2)),
 			2.0f * (_q(2) * _q(3) + _q(0) * _q(1)),
 			(_q(0) * _q(0) - _q(1) * _q(1) - _q(2) * _q(2) + _q(3) * _q(3))
 		);
-		// assuming direction is perpendicular to bodyX/earthZ plane
-		Vector<3> tangentE = _q.conjugate_inversed(Vector<3>(1.0f, 0.0f, 0.0f));
-		Vector<3> centripA = (k % tangentE) * centripMag;
+		// assuming earth frame centripetal accel is perpendicular to bodyX/earthZ plane
+		Vector<3> centripA = Vector<3>(0.0f, 0.0f, 1.0f) % _q.conjugate(Vector<3>(1.0f, 0.0f, 0.0f));
+		_centrip.centripMag = centripE * centripA;
+		centripA *= _centrip.centripMag;
+		//warnx("centripA: (%8.3f, %8.3f, %8.3f)", (double)centripA.data[0], (double)centripA.data[1], (double)centripA.data[2]);
+		Vector<3> estG = aE - centripA;
+		//warnx("estG: (%8.3f, %8.3f, %8.3f)", (double)estG.data[0], (double)estG.data[1], (double)estG.data[2]);
 
 		for (int i=0; i<3; i++) {
-			_centrip.centripE[i] = centripE.data[i];
+			_centrip.aE[i] = aE.data[i];
 			_centrip.centripA[i] = centripA.data[i];
 			_centrip.omegaE[i] = omegaE.data[i];
-			_centrip.tangentE[i] = tangentE.data[i];
+			_centrip.estG[i] = estG.data[i];
 		}
-		_centrip.centripMag = centripMag;
-		_centrip.tV = tV;
 
 	}
 
