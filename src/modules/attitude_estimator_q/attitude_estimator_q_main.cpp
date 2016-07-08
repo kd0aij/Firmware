@@ -966,41 +966,51 @@ bool AttitudeEstimatorQ::update_centrip_comp(Quaternion & quat, Vector<3> & rate
 		(quat(0) * quat(0) - quat(1) * quat(1) - quat(2) * quat(2) + quat(3) * quat(3))
 	);
 
-	// assume rate of rotation is the rate of thrust vector rotation
-	Vector<3> thrE = quat.conjugate(Vector<3>(0.0f, 0.0f, 1.0f));
-	double last_thetaT = _thetaT;
-	_thetaT = atan2(thrE.data[1], thrE.data[0]);
-	double dtheta = _wrap_pi(_thetaT - last_thetaT);
-	float omegaE = _lp_omega.apply((float)dtheta / dt);
-	_centrip.thetaT = _thetaT;
-	_centrip.omegaE = omegaE;
-	_centrip.tV = 0.0f;
-	_centrip.centripMag = 0.0f;
+	float omegaE = _lp_omega.apply(spinRate);
+	if (omegaE > 0.175f) {
+		//	// assume rate of rotation is the rate of thrust vector rotation
+		//	Vector<3> thrE = quat.conjugate(Vector<3>(0.0f, 0.0f, 1.0f));
+		//	double last_thetaT = _thetaT;
+		//	_thetaT = atan2(thrE.data[1], thrE.data[0]);
+		//	double dtheta = _wrap_pi(_thetaT - last_thetaT);
+		//	float omegaE = _lp_omega.apply((float)dtheta / dt);
+		//	_centrip.thetaT = _thetaT;
+		//	_centrip.omegaE = omegaE;
 
-	// estimate centripetal acceleration in the earth frame
-	Vector<3> aE = quat.conjugate(_accel);
-	Vector<3> centripE = aE - Vector<3>(0.0f, 0.0f, -9.925f);
+		// assume rate of rotation is the rate of body rotation
+		_centrip.omegaE = omegaE;
 
-	// construct centripetal accel vector in earth frame
+		// estimate centripetal acceleration in the earth frame
+		Vector<3> aE = quat.conjugate(_accel);
+		Vector<3> centripE = aE - Vector<3>(0.0f, 0.0f, -9.925f);
 
-	// no slip: assuming earth frame centripetal accel is perpendicular to bodyX/earthZ plane
-//		Vector<3> centripA = Vector<3>(0.0f, 0.0f, 1.0f) % quat.conjugate(Vector<3>(1.0f, 0.0f, 0.0f));
-//		Vector<3> omegaE = quat.conjugate(_gyro);
-//		float omega = omegaE.data[2];
+		// construct centripetal accel vector in earth frame
 
-	// thrust vector: assuming omegaE cross V = centripE (and measured aE is purely centripetal)
-	Vector<2> Vt = Vector<2>(omegaE * centripE.data[1], -omegaE * centripE.data[0]);
+		// no slip: assuming earth frame centripetal accel is perpendicular to bodyX/earthZ plane
+	//		Vector<3> centripA = Vector<3>(0.0f, 0.0f, 1.0f) % quat.conjugate(Vector<3>(1.0f, 0.0f, 0.0f));
+	//		Vector<3> omegaE = quat.conjugate(_gyro);
+	//		float omega = omegaE.data[2];
 
-	_centrip.centripMag = centripE.length();
+		// thrust vector: assuming omegaE cross V = centripE (and measured aE is purely centripetal)
+		Vector<2> Vt = Vector<2>(omegaE * centripE.data[1], -omegaE * centripE.data[0]);
 
-	// estimate tangential velocity in earth frame
-	_centrip.tV = fminf(fabs(_centrip.centripMag / omegaE), 20.0f);
+		_centrip.centripMag = centripE.length();
 
-	Vector<3> estG = aE - centripE;
+		// estimate tangential velocity in earth frame
+		_centrip.tV = fminf(fabs(_centrip.centripMag / omegaE), 20.0f);
 
-	/* compensate body frame accel for centripetal accel */
-	/* estimated g vector in body frame is (_accel - centripetal accel) */
-//		corr += (kE % (_accel - quat.conjugate_inversed(centripE)).normalized()) * _w_accel;
+		Vector<3> estG = aE - centripE;
+
+		/* compensate body frame accel for centripetal accel */
+		/* estimated g vector in body frame is (_accel - centripetal accel) */
+		//		corr += (kE % (_accel - quat.conjugate_inversed(centripE)).normalized()) * _w_accel;
+
+		for (int i=0; i<3; i++) {
+			_centrip.aE[i] = aE.data[i];
+			_centrip.centripA[i] = centripE.data[i];
+			_centrip.estG[i] = estG.data[i];
+		}
+	}
 
 	// earth frame magnetometer reference vector
 //	Vector<3> magRef(0.229f, -0.006f, 0.368f);
@@ -1017,9 +1027,6 @@ bool AttitudeEstimatorQ::update_centrip_comp(Quaternion & quat, Vector<3> & rate
 	Vector<3> mag_err = mag_n % _delay_buff[cur_index];
 
 	for (int i=0; i<3; i++) {
-		_centrip.aE[i] = aE.data[i];
-		_centrip.centripA[i] = centripE.data[i];
-		_centrip.estG[i] = estG.data[i];
 		_centrip.mag_n[i] = mag_n.data[i];
 		_centrip.magRef[i] = magRef.data[i];
 		_centrip.mag_err[i] = mag_err.data[i];
