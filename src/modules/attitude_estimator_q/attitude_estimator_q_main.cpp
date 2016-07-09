@@ -995,7 +995,7 @@ bool AttitudeEstimatorQ::update_centrip_comp(Quaternion & quat, Vector<3> & rate
 	_centrip.centripMag = 0.0f;
 
 	float omegaMag = fabsf(omegaE);
-	if (omegaMag > 0.175f) {
+	if (omegaMag > 0.5f) {
 		// estimate centripetal acceleration in the earth frame
 		Vector<3> aE = quat.conjugate(_accel);
 		Vector<3> centripE = aE - Vector<3>(0.0f, 0.0f, -9.925f);
@@ -1011,7 +1011,6 @@ bool AttitudeEstimatorQ::update_centrip_comp(Quaternion & quat, Vector<3> & rate
 
 		// estimate actual centripetal accel using Vt and centripMag
 		Vector<3> centripA = Vector<3>(Vt.data[0], Vt.data[1], 0.0f);
-		centripA *= _centrip.centripMag;
 		Vector<3> estG = aE - centripA;
 
 		/* compensate body frame accel for centripetal accel */
