@@ -506,7 +506,7 @@ void Logger::add_default_topics()
 	add_topic("control_state", 20);
 	add_topic("camera_trigger");
 	add_topic("cpuload");
-	add_topic("gps_dump"); //this will only be published if GPS_DUMP_COMM is set
+//	add_topic("gps_dump"); //this will only be published if GPS_DUMP_COMM is set
 
 	/* for estimator replay (need to be at full rate) */
 	add_topic("sensor_combined");
