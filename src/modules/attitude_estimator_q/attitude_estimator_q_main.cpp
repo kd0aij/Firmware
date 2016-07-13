@@ -504,10 +504,6 @@ void AttitudeEstimatorQ::task_main()
 			memcpy(&att.q[0], _q.data, sizeof(att.q));
 			att.q_valid = true;
 
-			att.rate_vibration = _voter_gyro.get_vibration_factor(hrt_absolute_time());
-			att.accel_vibration = _voter_accel.get_vibration_factor(hrt_absolute_time());
-			att.mag_vibration = _voter_mag.get_vibration_factor(hrt_absolute_time());
-
 			int inst;
 			orb_publish_auto(ORB_ID(vehicle_attitude), &_att_pub, &att, &inst, ORB_PRIO_HIGH);
 		}
@@ -541,10 +537,6 @@ void AttitudeEstimatorQ::task_main()
 			att.R_valid = true;
 			memcpy(&att.q[0], _q2.data, sizeof(att.q));
 			att.q_valid = true;
-
-			att.rate_vibration = _voter_gyro.get_vibration_factor(hrt_absolute_time());
-			att.accel_vibration = _voter_accel.get_vibration_factor(hrt_absolute_time());
-			att.mag_vibration = _voter_mag.get_vibration_factor(hrt_absolute_time());
 
 			int inst;
 			orb_publish_auto(ORB_ID(vehicle_attitude), &_att_pub2, &att, &inst, ORB_PRIO_HIGH);
