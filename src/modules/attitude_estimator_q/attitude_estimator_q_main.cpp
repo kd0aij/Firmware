@@ -227,7 +227,7 @@ AttitudeEstimatorQ::AttitudeEstimatorQ() :
 	_lp_roll_rate(250.0f, 30.0f),
 	_lp_pitch_rate(250.0f, 30.0f),
 	_lp_yaw_rate(250.0f, 20.0f),
-	_lp_omega(250.0f, 1.0f)
+	_lp_omega(250.0f, 0.2f)
 {
 	_params_handles.w_acc		= param_find("ATT_W_ACC");
 	_params_handles.w_mag		= param_find("ATT_W_MAG");
@@ -860,16 +860,12 @@ bool AttitudeEstimatorQ::update_centrip_comp(Quaternion & quat, Vector<3> & rate
 	Vector<3> thrE = quat.conjugate(Vector<3>(0.0f, 0.0f, 1.0f));
 	Vector<2> thrEh = Vector<2>(thrE.data[0], thrE.data[1]);
 	double last_thetaT = _thetaT;
-	static bool theta_init = true;
 	if (thrEh.length() > .01f) {
 		_thetaT = atan2(thrE.data[1], thrE.data[0]);
-		if (theta_init) {
-			theta_init = false;
-			last_thetaT = _thetaT;
-		}
 	} else {
-		theta_init = true;
+		_lp_omega.reset(0.0f);
 	}
+
 	double dtheta = _wrap_pi(_thetaT - last_thetaT);
 	float omegaE = _lp_omega.apply((float)dtheta / dt);
 	_centrip.thetaT = _thetaT;
@@ -887,7 +883,7 @@ bool AttitudeEstimatorQ::update_centrip_comp(Quaternion & quat, Vector<3> & rate
 		_centrip.centripMag = centripE.length();
 
 		// estimate tangential velocity in earth frame
-		_centrip.tV = fminf(fabs(_centrip.centripMag / omegaE), 20.0f);
+		_centrip.tV = fabs(_centrip.centripMag / omegaE);
 
 		// thrust vector: assuming omegaE cross V = centripE (and measured aE is purely centripetal)
 		Vector<2> Vt = Vector<2>(omegaE * centripE.data[1], -omegaE * centripE.data[0]);
