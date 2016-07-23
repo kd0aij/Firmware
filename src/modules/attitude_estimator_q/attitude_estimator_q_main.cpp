@@ -464,14 +464,16 @@ void AttitudeEstimatorQ::task_main()
 
 		/* time from previous iteration */
 		hrt_abstime now = hrt_absolute_time();
+		// TODO: couldn't last_time be init'ed at startup?
 		float dt = (last_time > 0) ? ((now  - last_time) / 1000000.0f) : 0.00001f;
 		last_time = now;
 
+		// TODO: is this test still necessary?
 		if (dt > _dt_max) {
 			dt = _dt_max;
 		}
 
-		/* primary attitude estimate is _q */
+		/* primary attitude estimate is {_q, _rates, _gyro_bias} */
 		if (update_centrip_comp(_q, _rates, _gyro_bias, dt)) {
 			int cinst;
 			_centrip.timestamp = sensors.timestamp;
@@ -508,7 +510,7 @@ void AttitudeEstimatorQ::task_main()
 			orb_publish_auto(ORB_ID(vehicle_attitude), &_att_pub, &att, &inst, ORB_PRIO_HIGH);
 		}
 
-		/* uncompensated attitude estimate is _q2 */
+		/* uncompensated attitude estimate is {_q2, _rates2, _gyro_bias2} */
 		if (update(_q2, _rates2, _gyro_bias2, dt)) {
 			Vector<3> euler = _q2.to_euler();
 
@@ -682,6 +684,7 @@ bool AttitudeEstimatorQ::init()
 
 	_q.normalize();
 
+	// also init the secondary attitude estimate
 	_q2 = Quaternion(_q);
 
 	if (PX4_ISFINITE(_q(0)) && PX4_ISFINITE(_q(1)) &&
