@@ -329,6 +329,7 @@ PX4FMU::PX4FMU() :
 	_safety_disabled(false),
 	_to_safety(nullptr)
 {
+	// TODO: this should be using parameters PWM_AUX_MIN and PWM_AUX_MAX
 	for (unsigned i = 0; i < _max_actuators; i++) {
 		_min_pwm[i] = PWM_DEFAULT_MIN;
 		_max_pwm[i] = PWM_DEFAULT_MAX;
