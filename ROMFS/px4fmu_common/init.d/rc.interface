@@ -196,7 +196,7 @@ then
 			pwm failsafe -d $OUTPUT_AUX_DEV $FAILSAFE
 		fi
 		
-		pwm min -c $PWM_ACHDIS -p 990
+		pwm min -c $PWM_ACHDIS -p 990 -d $OUTPUT_AUX_DEV 
 
 	fi
 fi
