@@ -200,6 +200,8 @@ private:
 		param_t acro_rollRate_max;
 		param_t acro_pitchRate_max;
 		param_t acro_yawRate_max;
+		param_t alt_mode;
+		param_t opt_recover;
 
 	}		_params_handles;		/**< handles for interesting parameters */
 
@@ -225,6 +227,11 @@ private:
 		float acro_rollRate_max;
 		float acro_pitchRate_max;
 		float acro_yawRate_max;
+		float vel_max_up;
+		float vel_max_down;
+		uint32_t alt_mode;
+
+		int opt_recover;
 
 		math::Vector<3> pos_p;
 		math::Vector<3> vel_p;
@@ -2018,7 +2025,8 @@ MulticopterPositionControl::task_main()
 
 			/* control roll and pitch directly if no aiding velocity controller is active */
 			if (!_control_mode.flag_control_velocity_enabled) {
-				if (_vehicle_status.main_state == vehicle_status_s::MAIN_STATE_ACRO) {
+				/* and in ACRO mode */
+				if (_vehicle_status.nav_state == vehicle_status_s::NAVIGATION_STATE_ACRO) {
 					/* rate mode - interpret roll/pitch inputs as rate demands */
 					float roll_body = _manual.y * _params.acro_rollRate_max * dt;
 					float pitch_body = -_manual.x * _params.acro_pitchRate_max * dt;
@@ -2046,11 +2054,51 @@ MulticopterPositionControl::task_main()
 						decimate = 0;
 						warnx("rollsp: %6.4f, pitchsp: %6.4f", (double)_att_sp.roll_body, (double)_att_sp.pitch_body);
 					}
-				} else {
-					/* angle mode - interpret roll/pitch inputs as angles */
+					/* or if optimal recovery is not used */
+				} else if (_params.opt_recover <= 0) {
 					_att_sp.roll_body = _manual.y * _params.man_roll_max;
 					_att_sp.pitch_body = -_manual.x * _params.man_pitch_max;
+
+					// construct attitude setpoint rotation matrix. modify the setpoints for roll
+					// and pitch such that they reflect the user's intention even if a yaw error
+					// (yaw_sp - yaw) is present. In the presence of a yaw error constructing a rotation matrix
+					// from the pure euler angle setpoints will lead to unexpected attitude behaviour from
+					// the user's view as the euler angle sequence uses the  yaw setpoint and not the current
+					// heading of the vehicle.
+
+					// calculate our current yaw error
+					float yaw_error = _wrap_pi(_att_sp.yaw_body - _yaw);
+
+					// compute the vector obtained by rotating a z unit vector by the rotation
+					// given by the roll and pitch commands of the user
+					math::Vector<3> zB = {0, 0, 1};
+					math::Matrix<3, 3> R_sp_roll_pitch;
+					R_sp_roll_pitch.from_euler(_att_sp.roll_body, _att_sp.pitch_body, 0);
+					math::Vector<3> z_roll_pitch_sp = R_sp_roll_pitch * zB;
+
+
+					// transform the vector into a new frame which is rotated around the z axis
+					// by the current yaw error. this vector defines the desired tilt when we look
+					// into the direction of the desired heading
+					math::Matrix<3, 3> R_yaw_correction;
+					R_yaw_correction.from_euler(0.0f, 0.0f, -yaw_error);
+					z_roll_pitch_sp = R_yaw_correction * z_roll_pitch_sp;
+
+					// use the formula z_roll_pitch_sp = R_tilt * [0;0;1]
+					// to calculate the new desired roll and pitch angles
+					// R_tilt can be written as a function of the new desired roll and pitch
+					// angles. we get three equations and have to solve for 2 unknowns
+					float pitch_new = asinf(z_roll_pitch_sp(0));
+					float roll_new = -atan2f(z_roll_pitch_sp(1), z_roll_pitch_sp(2));
+
+					R_sp.from_euler(roll_new, pitch_new, _att_sp.yaw_body);
+					memcpy(&_att_sp.R_body[0], R_sp.data, sizeof(_att_sp.R_body));
 				}
+
+				/* copy quaternion setpoint to attitude setpoint topic */
+				math::Quaternion q_sp;
+				q_sp.from_dcm(R_sp);
+				memcpy(&_att_sp.q_d[0], &q_sp.data[0], sizeof(_att_sp.q_d));
 			}
 
 			/* control throttle directly if no climb rate controller is active */
@@ -2064,52 +2112,6 @@ MulticopterPositionControl::task_main()
 				}
 			}
 
-			if (_vehicle_status.main_state != vehicle_status_s::MAIN_STATE_ACRO) {
-				/* construct attitude setpoint rotation matrix */
-				R_sp.from_euler(_att_sp.roll_body, _att_sp.pitch_body, _att_sp.yaw_body);
-				memcpy(&_att_sp.R_body[0], R_sp.data, sizeof(_att_sp.R_body));
-			}
-
-				// construct attitude setpoint rotation matrix. modify the setpoints for roll
-				// and pitch such that they reflect the user's intention even if a yaw error
-				// (yaw_sp - yaw) is present. In the presence of a yaw error constructing a rotation matrix
-				// from the pure euler angle setpoints will lead to unexpected attitude behaviour from
-				// the user's view as the euler angle sequence uses the  yaw setpoint and not the current
-				// heading of the vehicle.
-
-				// calculate our current yaw error
-				float yaw_error = _wrap_pi(_att_sp.yaw_body - _yaw);
-
-				// compute the vector obtained by rotating a z unit vector by the rotation
-				// given by the roll and pitch commands of the user
-				math::Vector<3> zB = {0, 0, 1};
-				math::Matrix<3, 3> R_sp_roll_pitch;
-				R_sp_roll_pitch.from_euler(_att_sp.roll_body, _att_sp.pitch_body, 0);
-				math::Vector<3> z_roll_pitch_sp = R_sp_roll_pitch * zB;
-
-
-				// transform the vector into a new frame which is rotated around the z axis
-				// by the current yaw error. this vector defines the desired tilt when we look
-				// into the direction of the desired heading
-				math::Matrix<3, 3> R_yaw_correction;
-				R_yaw_correction.from_euler(0.0f, 0.0f, -yaw_error);
-				z_roll_pitch_sp = R_yaw_correction * z_roll_pitch_sp;
-
-				// use the formula z_roll_pitch_sp = R_tilt * [0;0;1]
-				// to calculate the new desired roll and pitch angles
-				// R_tilt can be written as a function of the new desired roll and pitch
-				// angles. we get three equations and have to solve for 2 unknowns
-				float pitch_new = asinf(z_roll_pitch_sp(0));
-				float roll_new = -atan2f(z_roll_pitch_sp(1), z_roll_pitch_sp(2));
-
-				R_sp.from_euler(roll_new, pitch_new, _att_sp.yaw_body);
-				memcpy(&_att_sp.R_body[0], R_sp.data, sizeof(_att_sp.R_body));
-
-				/* copy quaternion setpoint to attitude setpoint topic */
-				math::Quaternion q_sp;
-				q_sp.from_dcm(R_sp);
-				memcpy(&_att_sp.q_d[0], &q_sp.data[0], sizeof(_att_sp.q_d));
-			}
 
 			_att_sp.timestamp = hrt_absolute_time();
 
