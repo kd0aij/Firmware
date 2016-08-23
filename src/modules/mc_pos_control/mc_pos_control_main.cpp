@@ -2023,7 +2023,7 @@ MulticopterPositionControl::task_main()
 
 			/* control roll and pitch directly if no aiding velocity controller is active */
 			if (!_control_mode.flag_control_velocity_enabled) {
-				math::Matrix<3,3> R_sp;
+				math::Matrix<3, 3> R_sp;
 
 				/* and in ACRO mode */
 				if (_vehicle_status.nav_state == vehicle_status_s::NAVIGATION_STATE_ACRO) {
@@ -2035,6 +2035,7 @@ MulticopterPositionControl::task_main()
 						R_sp = q_sp.to_dcm();
 						memcpy(&_att_sp.R_body[0], R_sp.data, sizeof(_att_sp.R_body));
 						_att_sp.R_valid = true;
+
 					} else {
 						/* copy current setpoint */
 						R_sp.set(_att_sp.R_body);
@@ -2052,8 +2053,9 @@ MulticopterPositionControl::task_main()
 						R_xyz.from_euler(dRoll, dPitch, dYaw);
 
 						R_sp = R_sp * R_xyz;
+
 						/* renormalize rows */
-						for (int row=0; row<3; row++) {
+						for (int row = 0; row < 3; row++) {
 							math::Vector<3> rvec(R_sp.data[row]);
 							R_sp.set_row(row, rvec.normalized());
 						}
