@@ -2021,41 +2021,53 @@ MulticopterPositionControl::task_main()
 				}
 			}
 
-			math::Matrix<3, 3> R_sp;
-
 			/* control roll and pitch directly if no aiding velocity controller is active */
 			if (!_control_mode.flag_control_velocity_enabled) {
+				math::Matrix<3,3> R_sp;
+
 				/* and in ACRO mode */
 				if (_vehicle_status.nav_state == vehicle_status_s::NAVIGATION_STATE_ACRO) {
-					/* rate mode - interpret roll/pitch inputs as rate demands */
-					float roll_body = _manual.y * _params.acro_rollRate_max * dt;
-					float pitch_body = -_manual.x * _params.acro_pitchRate_max * dt;
+					math::Vector<3> eulerAngles;
 
-					/* update attitude setpoint rotation matrix (avoiding singularities) */
-					math::Matrix<3, 3> R_xy;
-					R_xy.from_euler(roll_body, pitch_body, 0.0f);
+					if (!_att_sp.R_valid) {
+						/* initialize to current orientation */
+						math::Quaternion q_sp(_ctrl_state.q);
+						R_sp = q_sp.to_dcm();
+						memcpy(&_att_sp.R_body[0], R_sp.data, sizeof(_att_sp.R_body));
+						_att_sp.R_valid = true;
+					} else {
+						/* copy current setpoint */
+						R_sp.set(_att_sp.R_body);
+					}
 
-					math::Matrix<3, 3> R_delta(R_xy);
-					/* no yaw setpoint yet */
-//					math::Matrix<3, 3> R_z;
-//					R_z.from_euler(0, 0, _att_sp.yaw_body);
-//					R_delta = R_delta * R_z;
+					if (fabsf(_manual.x) > .001f || fabsf(_manual.y) > .001f || fabsf(_manual.r) > .001f) {
 
-					R_sp.set(_att_sp.R_body);
-					R_sp = R_delta * R_sp;
+						/* update attitude setpoint rotation matrix */
+						/* interpret roll/pitch inputs as rate demands */
+						float dRoll = _manual.y * _params.acro_rollRate_max * dt;
+						float dPitch = -_manual.x * _params.acro_pitchRate_max * dt;
+						float dYaw = _manual.r * _params.acro_yawRate_max * dt;
+
+						math::Matrix<3, 3> R_xyz;
+						R_xyz.from_euler(dRoll, dPitch, dYaw);
+
+						R_sp = R_sp * R_xyz;
+						/* renormalize rows */
+						for (int row=0; row<3; row++) {
+							math::Vector<3> rvec(R_sp.data[row]);
+							R_sp.set_row(row, rvec.normalized());
+						}
+
+					}
+
 					memcpy(&_att_sp.R_body[0], R_sp.data, sizeof(_att_sp.R_body));
-
-					math::Vector<3> eulerAngles = R_sp.to_euler();
+					eulerAngles = R_sp.to_euler();
 					_att_sp.roll_body = eulerAngles.data[0];
 					_att_sp.pitch_body = eulerAngles.data[1];
-//					_att_sp.yaw_body = eulerAngles.data[2];
-					static int decimate = 0;
-					if (decimate++ > 50) {
-						decimate = 0;
-						warnx("rollsp: %6.4f, pitchsp: %6.4f", (double)_att_sp.roll_body, (double)_att_sp.pitch_body);
-					}
-					/* or if optimal recovery is not used */
+					_att_sp.yaw_body = eulerAngles.data[2];
+
 				} else if (_params.opt_recover <= 0) {
+					/* not in ACRO mode and optimal recovery is not in use */
 					_att_sp.roll_body = _manual.y * _params.man_roll_max;
 					_att_sp.pitch_body = -_manual.x * _params.man_pitch_max;
 
