@@ -485,6 +485,7 @@ MulticopterPositionControl::MulticopterPositionControl() :
 	_params_handles.acro_rollRate_max	= 	param_find("MC_ACRO_R_MAX");
 	_params_handles.acro_pitchRate_max	= 	param_find("MC_ACRO_P_MAX");
 	_params_handles.acro_yawRate_max	= 	param_find("MC_ACRO_Y_MAX");
+	_params_handles.opt_recover = param_find("VT_OPT_RECOV_EN");
 
 	/* fetch initial parameter values */
 	parameters_update(true);
@@ -2027,7 +2028,94 @@ MulticopterPositionControl::task_main()
 
 				/* and in ACRO mode */
 				if (_vehicle_status.nav_state == vehicle_status_s::NAVIGATION_STATE_ACRO) {
-					math::Vector<3> eulerAngles;
+
+					/* if seq_switch just transitioned from off to on, begin substituting sequencer
+					 * controls for manual controls. The sequencer could be a separate module publishing
+					 * manual_control_setpoint messages, or a smaller message containing only
+					 * x, y, z, r
+					 */
+//						uint8_t seq_switch = _manual.seq_switch;
+
+					// for SITL, simulate seq_switch activation every 5 seconds
+					static uint8_t seq_switch = manual_control_setpoint_s::SWITCH_POS_OFF;
+
+					enum Seq_state { CLIMB, ROLL, FINISH, IDLE };
+					static Seq_state cur_state = IDLE;
+
+					static float endRoll = 0.0f;
+					uint64_t climb_dur = 1.0 * 1000000;
+					float rollRate = 0.0f;
+					float pitchRate = 0.0f;
+					float yawRate = 0.0f;
+
+					_att_sp.timestamp = hrt_absolute_time();
+
+					static uint64_t start_time = _att_sp.timestamp;
+
+					if ((_att_sp.timestamp - start_time) > 10000000) {
+						if (seq_switch == manual_control_setpoint_s::SWITCH_POS_OFF) {
+							seq_switch = manual_control_setpoint_s::SWITCH_POS_ON;
+							PX4_INFO("seq_switch on: at %u", start_time);
+						}
+
+						start_time = _att_sp.timestamp;
+					}
+
+					float remainder = fabsf(_att_sp.roll_body - endRoll);
+					if (remainder > M_TWOPI_F) { remainder -= M_TWOPI_F; }
+
+
+					/* substitute attitude sequence for _manual_control_setpoint */
+					switch (cur_state) {
+
+					case CLIMB:
+
+						rollRate = 0.0f;
+						pitchRate = 0.0f;
+						yawRate = 0.0f;
+						_att_sp.thrust = 0.9f;
+
+						if ((_att_sp.timestamp - start_time) > climb_dur) {
+							cur_state = ROLL;
+						}
+
+						break;
+
+					case ROLL:
+						rollRate = 1.0f;
+						if (fabsf(_att_sp.roll_body) > M_PI_2_F) {
+							_att_sp.thrust = 0.2f;
+
+						} else {
+							_att_sp.thrust = 0.8f;
+						}
+
+						if ((_att_sp.timestamp - start_time) > (climb_dur + 250000) && (remainder < 0.24f)) {
+							R_sp.from_euler(endRoll, _att_sp.pitch_body, _att_sp.yaw_body);
+							memcpy(&_att_sp.R_body[0], R_sp.data, sizeof(_att_sp.R_body));
+							cur_state = FINISH;
+						}
+						break;
+
+					case FINISH:
+
+						if (remainder < 0.01f) {
+							cur_state = IDLE;
+							seq_switch = manual_control_setpoint_s::SWITCH_POS_OFF;
+							PX4_INFO("sequence end at %u, duration: %u", _att_sp.timestamp, _att_sp.timestamp - start_time);
+						}
+						break;
+
+
+					case IDLE:
+						rollRate = _manual.y;
+						pitchRate = -_manual.x;
+						yawRate = _manual.r;
+						if (seq_switch == manual_control_setpoint_s::SWITCH_POS_ON) {
+							cur_state = CLIMB;
+						}
+						break;
+					}
 
 					if (!_att_sp.R_valid) {
 						/* initialize to current orientation */
@@ -2041,18 +2129,46 @@ MulticopterPositionControl::task_main()
 						R_sp.set(_att_sp.R_body);
 					}
 
-					if (fabsf(_manual.x) > .001f || fabsf(_manual.y) > .001f || fabsf(_manual.r) > .001f) {
+					if (fabsf(pitchRate) > .001f ||
+					    fabsf(rollRate) > .001f ||
+					    fabsf(yawRate) > .001f) {
+
+						/* limit setpoint rate of change */
+						float tilt_error = 0.0f;
+						float yaw_error = 0.0f;
+						math::Quaternion q_cur(_ctrl_state.q);
+						math::Matrix<3, 3> R_cur = q_cur.to_dcm();
+						math::Vector<3> zb(R_cur.data[2]);
+						math::Vector<3> zsp(R_sp.data[2]);
+						tilt_error = acosf(zb * zsp);
+						math::Vector<3> xb(R_cur.data[0]);
+						math::Vector<3> xsp(R_sp.data[0]);
+						yaw_error = acosf(xb * xsp);
 
 						/* update attitude setpoint rotation matrix */
-						/* interpret roll/pitch inputs as rate demands */
-						float dRoll = _manual.y * _params.acro_rollRate_max * dt;
-						float dPitch = -_manual.x * _params.acro_pitchRate_max * dt;
-						float dYaw = _manual.r * _params.acro_yawRate_max * dt;
+						/* interpret roll/pitch/yaw inputs as rate demands */
+						float dRoll = 0.0f;
+						float dPitch = 0.0f;
+						float dYaw = 0.0f;
 
-						math::Matrix<3, 3> R_xyz;
-						R_xyz.from_euler(dRoll, dPitch, dYaw);
+						if (tilt_error < M_PI_4_F) {
+							dRoll = rollRate * _params.acro_rollRate_max * dt;
+							dPitch = pitchRate * _params.acro_pitchRate_max * dt;
+						}
 
-						R_sp = R_sp * R_xyz;
+						if (yaw_error < M_PI_4_F) {
+							dYaw = yawRate * _params.acro_yawRate_max * dt;
+						}
+
+						math::Matrix<3, 3> R_xy;
+						R_xy.from_euler(dRoll, dPitch, 0.0f);
+
+						math::Matrix<3, 3> R_z;
+						R_z.from_euler(0.0f, 0.0f, dYaw);
+
+						R_sp = R_z * R_sp;
+
+						R_sp = R_sp * R_xy;
 
 						/* renormalize rows */
 						for (int row = 0; row < 3; row++) {
@@ -2063,7 +2179,7 @@ MulticopterPositionControl::task_main()
 					}
 
 					memcpy(&_att_sp.R_body[0], R_sp.data, sizeof(_att_sp.R_body));
-					eulerAngles = R_sp.to_euler();
+					math::Vector<3> eulerAngles = R_sp.to_euler();
 					_att_sp.roll_body = eulerAngles.data[0];
 					_att_sp.pitch_body = eulerAngles.data[1];
 					_att_sp.yaw_body = eulerAngles.data[2];
