@@ -902,7 +902,6 @@ MulticopterPositionControl::control_manual(float dt)
 			_vel_sp(2) = req_vel_sp_scaled(2);
 			_pos_sp(2) = _pos(2);
 		}
-		PX4_INFO("_vel_sp(2): %6.3f, _run_alt_control %d", (double)_vel_sp(2), _run_alt_control);
 	}
 }
 
