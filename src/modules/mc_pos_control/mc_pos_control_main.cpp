@@ -885,6 +885,7 @@ MulticopterPositionControl::control_manual(float dt)
 			if (!_alt_hold_engaged) {
 				if (_params.hold_max_z < FLT_EPSILON || fabsf(_vel(2)) < _params.hold_max_z) {
 					_alt_hold_engaged = true;
+					_vel_sp(2) = 0.0f;
 
 				} else {
 					_alt_hold_engaged = false;
