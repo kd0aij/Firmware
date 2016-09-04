@@ -1980,101 +1980,161 @@ MulticopterPositionControl::task_main()
 		/* generate attitude setpoint from manual controls */
 		if (_control_mode.flag_control_manual_enabled && _control_mode.flag_control_attitude_enabled) {
 
-			/* reset yaw setpoint to current position if needed */
-			if (reset_yaw_sp) {
-				reset_yaw_sp = false;
-				_att_sp.yaw_body = _yaw;
-			}
+			static bool seq_running = false;
+			static uint8_t last_seq_switch = manual_control_setpoint_s::SWITCH_POS_OFF;
+			static float end_yaw = 0.0f;
 
-			/* do not move yaw while sitting on the ground */
-			else if (!_vehicle_land_detected.landed &&
-				 !(!_control_mode.flag_control_altitude_enabled && _manual.z < 0.1f)) {
+			_att_sp.timestamp = hrt_absolute_time();
 
-				/* we want to know the real constraint, and global overrides manual */
-				const float yaw_rate_max = (_params.man_yaw_max < _params.global_yaw_max) ? _params.man_yaw_max :
-							   _params.global_yaw_max;
-				const float yaw_offset_max = yaw_rate_max / _params.mc_att_yaw_p;
-
-				_att_sp.yaw_sp_move_rate = _manual.r * yaw_rate_max;
-				float yaw_target = _wrap_pi(_att_sp.yaw_body + _att_sp.yaw_sp_move_rate * dt);
-				float yaw_offs = _wrap_pi(yaw_target - _yaw);
-
-				// If the yaw offset became too big for the system to track stop
-				// shifting it, only allow if it would make the offset smaller again.
-				if (fabsf(yaw_offs) < yaw_offset_max ||
-				    (_att_sp.yaw_sp_move_rate > 0 && yaw_offs < 0) ||
-				    (_att_sp.yaw_sp_move_rate < 0 && yaw_offs > 0)) {
-					_att_sp.yaw_body = yaw_target;
+			// if seq_switch just transitioned from off to on
+			uint8_t seq_switch = _manual.seq_switch;
+			// for SITL, simulate seq_switch activation every 5 seconds
+			static uint64_t last_act = _att_sp.timestamp;
+			if ((_att_sp.timestamp - last_act) > 5000000) {
+				if (seq_switch == manual_control_setpoint_s::SWITCH_POS_ON) {
+					seq_switch = manual_control_setpoint_s::SWITCH_POS_OFF;
+				} else {
+					seq_switch = manual_control_setpoint_s::SWITCH_POS_ON;
 				}
+				last_act = _att_sp.timestamp;
+				PX4_INFO("seq_switch: %d, last_act: %d", seq_switch, last_act);
 			}
+			if ((seq_switch != last_seq_switch) && (seq_switch == manual_control_setpoint_s::SWITCH_POS_ON)) {
+				seq_running = true;
+//				end_yaw = _wrap_pi(_att_sp.yaw_body + 3.14f);
+				PX4_INFO("seq_running: %d, end_yaw: %6.3f", seq_running, (double)end_yaw);
+			}
+			last_seq_switch = seq_switch;
 
-			/* control throttle directly if no climb rate controller is active */
-			if (!_control_mode.flag_control_climb_rate_enabled) {
-				float thr_val = throttle_curve(_manual.z, _params.thr_hover);
-				_att_sp.thrust = math::min(thr_val, _manual_thr_max.get());
+			/* substitute attitude sequence for _manual_control_setpoint */
+			if (seq_running) {
 
-				/* enforce minimum throttle if not landed */
-				if (!_vehicle_land_detected.landed) {
-					_att_sp.thrust = math::max(_att_sp.thrust, _manual_thr_min.get());
+				float dyaw = 6.28f * dt;
+				_att_sp.roll_body = _wrap_pi(_att_sp.roll_body + dyaw);
+				PX4_INFO("publish att_sp: yaw: %6.3f, dyaw: %6.3f, dt: %6.3f", (double)_att_sp.roll_body, (double)dyaw, (double)dt);
+//				float thr_val = throttle_curve(_manual.z, _params.thr_hover);
+//				_att_sp.thrust = math::min(thr_val, _manual_thr_max.get());
+				if (fabsf(_att_sp.roll_body) > M_PI_2_F) {
+					_att_sp.thrust = 0.2f;
+				} else {
+					_att_sp.thrust = _manual_thr_max.get();
 				}
-			}
-
-			/* control roll and pitch directly if no aiding velocity controller is active
-			 * and only if optimal recovery is not used */
-			if (!_control_mode.flag_control_velocity_enabled
-			    && _params.opt_recover <= 0) {
-				math::Matrix<3, 3> R_sp;
-				_att_sp.roll_body = _manual.y * _params.man_roll_max;
+//				_att_sp.roll_body = _manual.y * _params.man_roll_max;
 				_att_sp.pitch_body = -_manual.x * _params.man_pitch_max;
 
-				// construct attitude setpoint rotation matrix. modify the setpoints for roll
-				// and pitch such that they reflect the user's intention even if a yaw error
-				// (yaw_sp - yaw) is present. In the presence of a yaw error constructing a rotation matrix
-				// from the pure euler angle setpoints will lead to unexpected attitude behaviour from
-				// the user's view as the euler angle sequence uses the  yaw setpoint and not the current
-				// heading of the vehicle.
-
-				// calculate our current yaw error
-				float yaw_error = _wrap_pi(_att_sp.yaw_body - _yaw);
-
-				// compute the vector obtained by rotating a z unit vector by the rotation
-				// given by the roll and pitch commands of the user
-				math::Vector<3> zB = {0, 0, 1};
-				math::Matrix<3, 3> R_sp_roll_pitch;
-				R_sp_roll_pitch.from_euler(_att_sp.roll_body, _att_sp.pitch_body, 0);
-				math::Vector<3> z_roll_pitch_sp = R_sp_roll_pitch * zB;
-
-
-				// transform the vector into a new frame which is rotated around the z axis
-				// by the current yaw error. this vector defines the desired tilt when we look
-				// into the direction of the desired heading
-				math::Matrix<3, 3> R_yaw_correction;
-				R_yaw_correction.from_euler(0.0f, 0.0f, -yaw_error);
-				z_roll_pitch_sp = R_yaw_correction * z_roll_pitch_sp;
-
-				// use the formula z_roll_pitch_sp = R_tilt * [0;0;1]
-				// to calculate the new desired roll and pitch angles
-				// R_tilt can be written as a function of the new desired roll and pitch
-				// angles. we get three equations and have to solve for 2 unknowns
-				float pitch_new = asinf(z_roll_pitch_sp(0));
-				float roll_new = -atan2f(z_roll_pitch_sp(1), z_roll_pitch_sp(2));
-
-				R_sp.from_euler(roll_new, pitch_new, _att_sp.yaw_body);
+				float delta = fabsf(_att_sp.roll_body - end_yaw);
+				if (delta > M_TWOPI_F) delta -= M_TWOPI_F;
+				if (delta < (2.0f * dyaw) && (_att_sp.timestamp - last_act) > 100000) {
+					_att_sp.roll_body = end_yaw;
+					seq_running = false;
+					PX4_INFO("seq_running: %d", seq_running);
+				}
+				math::Matrix<3, 3> R_sp;
+				R_sp.from_euler(_att_sp.roll_body, _att_sp.pitch_body, _att_sp.yaw_body);
 				memcpy(&_att_sp.R_body[0], R_sp.data, sizeof(_att_sp.R_body));
 
 				/* copy quaternion setpoint to attitude setpoint topic */
 				math::Quaternion q_sp;
 				q_sp.from_dcm(R_sp);
 				memcpy(&_att_sp.q_d[0], &q_sp.data[0], sizeof(_att_sp.q_d));
+
+			} else {
+
+				/* reset yaw setpoint to current position if needed */
+				if (reset_yaw_sp) {
+					reset_yaw_sp = false;
+					_att_sp.yaw_body = _yaw;
+				}
+
+				/* do not move yaw while sitting on the ground */
+				else if (!_vehicle_land_detected.landed &&
+						!(!_control_mode.flag_control_altitude_enabled && _manual.z < 0.1f)) {
+
+					/* we want to know the real constraint, and global overrides manual */
+					const float yaw_rate_max = (_params.man_yaw_max < _params.global_yaw_max) ? _params.man_yaw_max :
+							_params.global_yaw_max;
+					const float yaw_offset_max = yaw_rate_max / _params.mc_att_yaw_p;
+
+					_att_sp.yaw_sp_move_rate = _manual.r * yaw_rate_max;
+					float yaw_target = _wrap_pi(_att_sp.yaw_body + _att_sp.yaw_sp_move_rate * dt);
+					float yaw_offs = _wrap_pi(yaw_target - _yaw);
+
+					// If the yaw offset became too big for the system to track stop
+					// shifting it, only allow if it would make the offset smaller again.
+					if (fabsf(yaw_offs) < yaw_offset_max ||
+							(_att_sp.yaw_sp_move_rate > 0 && yaw_offs < 0) ||
+							(_att_sp.yaw_sp_move_rate < 0 && yaw_offs > 0)) {
+						_att_sp.yaw_body = yaw_target;
+					}
+				}
+
+				/* control throttle directly if no climb rate controller is active */
+				if (!_control_mode.flag_control_climb_rate_enabled) {
+					float thr_val = throttle_curve(_manual.z, _params.thr_hover);
+					_att_sp.thrust = math::min(thr_val, _manual_thr_max.get());
+
+					/* enforce minimum throttle if not landed */
+					if (!_vehicle_land_detected.landed) {
+						_att_sp.thrust = math::max(_att_sp.thrust, _manual_thr_min.get());
+					}
+				}
+
+				/* control roll and pitch directly if no aiding velocity controller is active
+				 * and only if optimal recovery is not used */
+				if (!_control_mode.flag_control_velocity_enabled
+						&& _params.opt_recover <= 0) {
+					math::Matrix<3, 3> R_sp;
+					_att_sp.roll_body = _manual.y * _params.man_roll_max;
+					_att_sp.pitch_body = -_manual.x * _params.man_pitch_max;
+
+					// construct attitude setpoint rotation matrix. modify the setpoints for roll
+					// and pitch such that they reflect the user's intention even if a yaw error
+					// (yaw_sp - yaw) is present. In the presence of a yaw error constructing a rotation matrix
+					// from the pure euler angle setpoints will lead to unexpected attitude behaviour from
+					// the user's view as the euler angle sequence uses the  yaw setpoint and not the current
+					// heading of the vehicle.
+
+					// calculate our current yaw error
+					float yaw_error = _wrap_pi(_att_sp.yaw_body - _yaw);
+
+					// compute the vector obtained by rotating a z unit vector by the rotation
+					// given by the roll and pitch commands of the user
+					math::Vector<3> zB = {0, 0, 1};
+					math::Matrix<3, 3> R_sp_roll_pitch;
+					R_sp_roll_pitch.from_euler(_att_sp.roll_body, _att_sp.pitch_body, 0);
+					math::Vector<3> z_roll_pitch_sp = R_sp_roll_pitch * zB;
+
+
+					// transform the vector into a new frame which is rotated around the z axis
+					// by the current yaw error. this vector defines the desired tilt when we look
+					// into the direction of the desired heading
+					math::Matrix<3, 3> R_yaw_correction;
+					R_yaw_correction.from_euler(0.0f, 0.0f, -yaw_error);
+					z_roll_pitch_sp = R_yaw_correction * z_roll_pitch_sp;
+
+					// use the formula z_roll_pitch_sp = R_tilt * [0;0;1]
+					// to calculate the new desired roll and pitch angles
+					// R_tilt can be written as a function of the new desired roll and pitch
+					// angles. we get three equations and have to solve for 2 unknowns
+					float pitch_new = asinf(z_roll_pitch_sp(0));
+					float roll_new = -atan2f(z_roll_pitch_sp(1), z_roll_pitch_sp(2));
+
+					R_sp.from_euler(roll_new, pitch_new, _att_sp.yaw_body);
+					memcpy(&_att_sp.R_body[0], R_sp.data, sizeof(_att_sp.R_body));
+
+					/* copy quaternion setpoint to attitude setpoint topic */
+					math::Quaternion q_sp;
+					q_sp.from_dcm(R_sp);
+					memcpy(&_att_sp.q_d[0], &q_sp.data[0], sizeof(_att_sp.q_d));
+				}
+
+				_att_sp.timestamp = hrt_absolute_time();
+
 			}
-
-			_att_sp.timestamp = hrt_absolute_time();
-
 		} else {
 			reset_yaw_sp = true;
 			_att_sp.yaw_sp_move_rate = 0.0f;
 		}
-
 		/* update previous velocity for velocity controller D part */
 		_vel_prev = _vel;
 
