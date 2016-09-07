@@ -2046,9 +2046,8 @@ MulticopterPositionControl::task_main()
 					static math::Quaternion q_end;
 					static math::Quaternion q_cur;
 					static math::Vector<3> euler_end;
-					float endRoll = 0.0f;
-					float endPitch = 0.0f;
-					uint64_t climb_dur = 1.0 * 1000000;
+					static uint64_t start_finish = 0;
+					const uint64_t climb_dur = 1.0 * 1000000;
 					float rollRate = 0.0f;
 					float pitchRate = 0.0f;
 					float yawRate = 0.0f;
@@ -2080,7 +2079,7 @@ MulticopterPositionControl::task_main()
 							_att_sp.thrust = 0.8f;
 						}
 
-						PX4_INFO("inversion at %u, roll: %6.3f, pitch: %6.3f", cur_time,
+						PX4_INFO("inversion at %6.3f, roll: %6.3f, pitch: %6.3f", (double)cur_time/1e6,
 							 (double)_att_sp.roll_body, (double)_att_sp.pitch_body);
 					}
 
@@ -2099,7 +2098,7 @@ MulticopterPositionControl::task_main()
 							_att_sp.thrust = 0.9f;
 
 							if ((cur_time - start_time) > climb_dur) {
-								cur_state = ROLL;
+								cur_state = PITCH;
 							}
 
 							break;
@@ -2108,23 +2107,24 @@ MulticopterPositionControl::task_main()
 					case ROLL: {
 							rollRate = 1.0f;
 
-							float remainder = fabsf(_att_sp.roll_body - endRoll);
+							q_cur.set(_ctrl_state.q);
+							math::Quaternion q_err = q_cur * q_end.conjugated();
+							float error = acosf(fabsf(q_err.data[0]));
 
-							if (remainder > M_TWOPI_F) { remainder -= M_TWOPI_F; }
-
-							if ((cur_time - start_time) > (climb_dur + 250000) && (remainder < 0.24f)) {
-//								R_sp.from_euler(endRoll, _att_sp.pitch_body, _att_sp.yaw_body);
+							if ((cur_time - start_time) > (climb_dur + 250000) && (error < 0.24f)) {
+								rollRate = 0.0f;
 								R_sp.from_euler(euler_end.data[0], euler_end.data[1], euler_end.data[2]);
 								memcpy(&_att_sp.R_body[0], R_sp.data, sizeof(_att_sp.R_body));
 								cur_state = FINISH;
-								q_cur.set(_ctrl_state.q);
-								math::Quaternion q_err = q_cur * q_end.conjugated();
+								start_finish = cur_time;
+
 								printf("finish roll: q_cur: ");
 								q_cur.print();
 								printf("q_end: ");
 								q_end.print();
 								printf("q_err: ");
 								q_err.print();
+								PX4_INFO("error %6.3f", (double)error);
 							}
 
 							break;
@@ -2133,16 +2133,24 @@ MulticopterPositionControl::task_main()
 					case PITCH: {
 							pitchRate = 1.0f;
 
-							if (!inverted) {
-								float remainder = fabsf(_att_sp.roll_body - endPitch);
+							q_cur.set(_ctrl_state.q);
+							math::Quaternion q_err = q_cur * q_end.conjugated();
+							float error = acosf(fabsf(q_err.data[0]));
 
-								if (remainder > M_TWOPI_F) { remainder -= M_TWOPI_F; }
+							if ((cur_time - start_time) > (climb_dur + 250000) && (error < 0.24f)) {
+								pitchRate = 0.0f;
+								R_sp.from_euler(euler_end.data[0], euler_end.data[1], euler_end.data[2]);
+								memcpy(&_att_sp.R_body[0], R_sp.data, sizeof(_att_sp.R_body));
+								cur_state = FINISH;
+								start_finish = cur_time;
 
-								if ((cur_time - start_time) > (climb_dur + 250000) && (remainder < 0.24f)) {
-									R_sp.from_euler(_att_sp.pitch_body, endPitch, _att_sp.yaw_body);
-									memcpy(&_att_sp.R_body[0], R_sp.data, sizeof(_att_sp.R_body));
-									cur_state = FINISH;
-								}
+								printf("finish pitch: q_cur: ");
+								q_cur.print();
+								printf("q_end: ");
+								q_end.print();
+								printf("q_err: ");
+								q_err.print();
+								PX4_INFO("error %6.3f", (double)error);
 							}
 
 							break;
@@ -2154,21 +2162,19 @@ MulticopterPositionControl::task_main()
 							math::Quaternion q_err = q_cur * q_end.conjugated();
 							float error = acosf(fabsf(q_err.data[0]));
 
-//							printf("q_cur: ");
-//							q_cur.print();
-//							printf("q_end: ");
-//							q_end.print();
-//							printf("q_err: ");
-//							q_err.print();
-//							PX4_INFO("error %6.3f", (double)error);
-
-							if (error < 0.001f) {
+							if (error < 0.005f || (cur_time - start_finish) > 500000) {
 								cur_state = IDLE;
 								seq_switch = manual_control_setpoint_s::SWITCH_POS_OFF;
-								PX4_INFO("sequence end at %u, duration: %u", cur_time, cur_time - start_time);
+								PX4_INFO("sequence end at %6.3f, duration: %6.3f", (double)cur_time/1e6, (double)(cur_time - start_time)/1e6);
+								printf("q_cur: ");
 								q_cur.print();
+								printf("q_end: ");
+								q_end.print();
+								printf("q_err: ");
 								q_err.print();
 								PX4_INFO("error %6.3f", (double)error);
+								printf("final Euler angles: ");
+								q_cur.to_euler().print();
 							}
 
 							break;
@@ -2185,9 +2191,8 @@ MulticopterPositionControl::task_main()
 								// initialize sequencer
 								q_end.set(_ctrl_state.q);
 								euler_end = q_end.to_euler();
+								printf("starting Euler angles: ");
 								q_end.to_euler().print();
-								printf("q_cur: ");
-								q_cur.print();
 								printf("q_end: ");
 								q_end.print();
 							}
