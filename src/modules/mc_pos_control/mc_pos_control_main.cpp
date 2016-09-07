@@ -2039,82 +2039,161 @@ MulticopterPositionControl::task_main()
 					// for SITL, simulate seq_switch activation every 5 seconds
 					static uint8_t seq_switch = manual_control_setpoint_s::SWITCH_POS_OFF;
 
-					enum Seq_state { CLIMB, ROLL, FINISH, IDLE };
+					enum Seq_state { IDLE, CLIMB, ROLL, PITCH, FINISH };
 					static Seq_state cur_state = IDLE;
+					static Seq_state last_state = FINISH;
 
-					static float endRoll = 0.0f;
+					static math::Quaternion q_end;
+					static math::Quaternion q_cur;
+					static math::Vector<3> euler_end;
+					float endRoll = 0.0f;
+					float endPitch = 0.0f;
 					uint64_t climb_dur = 1.0 * 1000000;
 					float rollRate = 0.0f;
 					float pitchRate = 0.0f;
 					float yawRate = 0.0f;
 
-					_att_sp.timestamp = hrt_absolute_time();
+					uint64_t cur_time = hrt_absolute_time();
+					static uint64_t start_time = cur_time;
 
-					static uint64_t start_time = _att_sp.timestamp;
-
-					if ((_att_sp.timestamp - start_time) > 10000000) {
+					if ((cur_time - start_time) > 10000000) {
 						if (seq_switch == manual_control_setpoint_s::SWITCH_POS_OFF) {
 							seq_switch = manual_control_setpoint_s::SWITCH_POS_ON;
-							PX4_INFO("seq_switch on: at %u", start_time);
+							PX4_INFO("seq_switch on: at %f", (double)start_time/1e6);
 						}
 
-						start_time = _att_sp.timestamp;
+						start_time = cur_time;
 					}
 
-					float remainder = fabsf(_att_sp.roll_body - endRoll);
-					if (remainder > M_TWOPI_F) { remainder -= M_TWOPI_F; }
+					// reduce thrust when inverted (Earth z points down in body frame)
+					bool inversion = (_att_sp.R_body[8] > 0.0f);
+					static bool inverted = false;
 
+					if (inversion != inverted) {
+						inverted = inversion;
 
-					/* substitute attitude sequence for _manual_control_setpoint */
-					switch (cur_state) {
-
-					case CLIMB:
-
-						rollRate = 0.0f;
-						pitchRate = 0.0f;
-						yawRate = 0.0f;
-						_att_sp.thrust = 0.9f;
-
-						if ((_att_sp.timestamp - start_time) > climb_dur) {
-							cur_state = ROLL;
-						}
-
-						break;
-
-					case ROLL:
-						rollRate = 1.0f;
-						if (fabsf(_att_sp.roll_body) > M_PI_2_F) {
+						// reduce thrust when inverted (z component of Earth z points down)
+						if (inverted) {
 							_att_sp.thrust = 0.2f;
 
 						} else {
 							_att_sp.thrust = 0.8f;
 						}
 
-						if ((_att_sp.timestamp - start_time) > (climb_dur + 250000) && (remainder < 0.24f)) {
-							R_sp.from_euler(endRoll, _att_sp.pitch_body, _att_sp.yaw_body);
-							memcpy(&_att_sp.R_body[0], R_sp.data, sizeof(_att_sp.R_body));
-							cur_state = FINISH;
+						PX4_INFO("inversion at %u, roll: %6.3f, pitch: %6.3f", cur_time,
+							 (double)_att_sp.roll_body, (double)_att_sp.pitch_body);
+					}
+
+					/* substitute attitude sequence for _manual_control_setpoint */
+					if (cur_state != last_state) {
+						PX4_INFO("state: %d at %6.3f", cur_state, (double)cur_time/1e6);
+						last_state = cur_state;
+					}
+					switch (cur_state) {
+
+					case CLIMB: {
+
+							rollRate = 0.0f;
+							pitchRate = 0.0f;
+							yawRate = 0.0f;
+							_att_sp.thrust = 0.9f;
+
+							if ((cur_time - start_time) > climb_dur) {
+								cur_state = ROLL;
+							}
+
+							break;
 						}
-						break;
 
-					case FINISH:
+					case ROLL: {
+							rollRate = 1.0f;
 
-						if (remainder < 0.01f) {
-							cur_state = IDLE;
-							seq_switch = manual_control_setpoint_s::SWITCH_POS_OFF;
-							PX4_INFO("sequence end at %u, duration: %u", _att_sp.timestamp, _att_sp.timestamp - start_time);
+							float remainder = fabsf(_att_sp.roll_body - endRoll);
+
+							if (remainder > M_TWOPI_F) { remainder -= M_TWOPI_F; }
+
+							if ((cur_time - start_time) > (climb_dur + 250000) && (remainder < 0.24f)) {
+//								R_sp.from_euler(endRoll, _att_sp.pitch_body, _att_sp.yaw_body);
+								R_sp.from_euler(euler_end.data[0], euler_end.data[1], euler_end.data[2]);
+								memcpy(&_att_sp.R_body[0], R_sp.data, sizeof(_att_sp.R_body));
+								cur_state = FINISH;
+								q_cur.set(_ctrl_state.q);
+								math::Quaternion q_err = q_cur * q_end.conjugated();
+								printf("finish roll: q_cur: ");
+								q_cur.print();
+								printf("q_end: ");
+								q_end.print();
+								printf("q_err: ");
+								q_err.print();
+							}
+
+							break;
 						}
-						break;
 
+					case PITCH: {
+							pitchRate = 1.0f;
 
-					case IDLE:
-						rollRate = _manual.y;
-						pitchRate = -_manual.x;
-						yawRate = _manual.r;
-						if (seq_switch == manual_control_setpoint_s::SWITCH_POS_ON) {
-							cur_state = CLIMB;
+							if (!inverted) {
+								float remainder = fabsf(_att_sp.roll_body - endPitch);
+
+								if (remainder > M_TWOPI_F) { remainder -= M_TWOPI_F; }
+
+								if ((cur_time - start_time) > (climb_dur + 250000) && (remainder < 0.24f)) {
+									R_sp.from_euler(_att_sp.pitch_body, endPitch, _att_sp.yaw_body);
+									memcpy(&_att_sp.R_body[0], R_sp.data, sizeof(_att_sp.R_body));
+									cur_state = FINISH;
+								}
+							}
+
+							break;
 						}
-						break;
+
+					case FINISH: {
+							// return to starting orientation
+							q_cur.set(_ctrl_state.q);
+							math::Quaternion q_err = q_cur * q_end.conjugated();
+							float error = acosf(fabsf(q_err.data[0]));
+
+//							printf("q_cur: ");
+//							q_cur.print();
+//							printf("q_end: ");
+//							q_end.print();
+//							printf("q_err: ");
+//							q_err.print();
+//							PX4_INFO("error %6.3f", (double)error);
+
+							if (error < 0.001f) {
+								cur_state = IDLE;
+								seq_switch = manual_control_setpoint_s::SWITCH_POS_OFF;
+								PX4_INFO("sequence end at %u, duration: %u", cur_time, cur_time - start_time);
+								q_cur.print();
+								q_err.print();
+								PX4_INFO("error %6.3f", (double)error);
+							}
+
+							break;
+						}
+
+					case IDLE: {
+							rollRate = _manual.y;
+							pitchRate = -_manual.x;
+							yawRate = _manual.r;
+
+							if (seq_switch == manual_control_setpoint_s::SWITCH_POS_ON) {
+								cur_state = CLIMB;
+
+								// initialize sequencer
+								q_end.set(_ctrl_state.q);
+								euler_end = q_end.to_euler();
+								q_end.to_euler().print();
+								printf("q_cur: ");
+								q_cur.print();
+								printf("q_end: ");
+								q_end.print();
+							}
+
+							break;
+						}
 					}
 
 					if (!_att_sp.R_valid) {
@@ -2136,7 +2215,7 @@ MulticopterPositionControl::task_main()
 						/* limit setpoint rate of change */
 						float tilt_error = 0.0f;
 						float yaw_error = 0.0f;
-						math::Quaternion q_cur(_ctrl_state.q);
+						q_cur.set(_ctrl_state.q);
 						math::Matrix<3, 3> R_cur = q_cur.to_dcm();
 						math::Vector<3> zb(R_cur.data[2]);
 						math::Vector<3> zsp(R_sp.data[2]);
