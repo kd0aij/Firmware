@@ -1,5 +1,14 @@
 #include "mc_sequencer.h"
-
+/*
+ * Inputs:
+ * ctrl_state: for current attitude quaternion
+ * manual: sequence trigger switch
+ *
+ * Outputs:
+ * att_sp: thrust and rotation angle setpoints
+ * R_sp: attitude setpoint
+ * rollRate, pitchRate, yawRate: rotation rate commands
+ */
 void control_sequencer(
 	struct control_state_s &ctrl_state,
 	struct vehicle_attitude_setpoint_s &att_sp,
@@ -43,6 +52,7 @@ void control_sequencer(
 	}
 
 	// reduce thrust when inverted (Earth z points down in body frame)
+	// TODO: use ctrl_state instead
 	bool inversion = (att_sp.R_body[8] > 0.0f);
 	static bool inverted = false;
 
@@ -78,7 +88,8 @@ void control_sequencer(
 			att_sp.thrust = 0.9f;
 
 			if ((cur_time - start_time) > climb_dur) {
-				cur_state = PITCH;
+				cur_state = ROLL;
+//				cur_state = PITCH;
 			}
 
 			break;
@@ -169,10 +180,10 @@ void control_sequencer(
 		}
 
 	case IDLE: {
-			// don't change manual inputs
-			rollRate = manual.y;
-			pitchRate = -manual.x;
-			yawRate = manual.r;
+//			// don't change manual inputs
+//			rollRate = manual.y;
+//			pitchRate = -manual.x;
+//			yawRate = manual.r;
 
 			if (seq_switch == manual_control_setpoint_s::SWITCH_POS_ON) {
 				cur_state = CLIMB;

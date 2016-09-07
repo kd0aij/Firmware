@@ -2026,15 +2026,15 @@ MulticopterPositionControl::task_main()
 
 			/* control roll and pitch directly if no aiding velocity controller is active */
 			if (!_control_mode.flag_control_velocity_enabled) {
+				// attitude setpoint rotation matrix
 				math::Matrix<3, 3> R_sp;
 
 				/* and in ACRO mode */
 				if (_vehicle_status.nav_state == vehicle_status_s::NAVIGATION_STATE_ACRO) {
 
-					float rollRate, pitchRate, yawRate;
-
-					control_sequencer(_ctrl_state, _att_sp, _manual,
-									  R_sp, rollRate, pitchRate, yawRate);
+					float rollRate = _manual.y;
+					float pitchRate = -_manual.x;
+					float yawRate = _manual.r;
 
 					if (!_att_sp.R_valid) {
 						/* initialize to current orientation */
@@ -2048,53 +2048,52 @@ MulticopterPositionControl::task_main()
 						R_sp.set(_att_sp.R_body);
 					}
 
-					if (fabsf(pitchRate) > .001f ||
-					    fabsf(rollRate) > .001f ||
-					    fabsf(yawRate) > .001f) {
+					/* the control sequencer overrides manual inputs
+					 * by setting values for roll/pitch/yawRate and modifying R_sp as needed
+					 */
+					control_sequencer(_ctrl_state, _att_sp, _manual, R_sp, rollRate, pitchRate, yawRate);
 
-						/* limit setpoint rate of change */
-						float tilt_error = 0.0f;
-						float yaw_error = 0.0f;
-						math::Quaternion q_cur(_ctrl_state.q);
-						math::Matrix<3, 3> R_cur = q_cur.to_dcm();
-						math::Vector<3> zb(R_cur.data[2]);
-						math::Vector<3> zsp(R_sp.data[2]);
-						tilt_error = acosf(zb * zsp);
-						math::Vector<3> xb(R_cur.data[0]);
-						math::Vector<3> xsp(R_sp.data[0]);
-						yaw_error = acosf(xb * xsp);
+					/* limit setpoint rate of change */
+					float tilt_error = 0.0f;
+					float yaw_error = 0.0f;
+//					math::Quaternion q_cur(_ctrl_state.q);
+//					math::Matrix<3, 3> R_cur = q_cur.to_dcm();
+//					math::Vector<3> zb(R_cur.data[2]);
+//					math::Vector<3> zsp(R_sp.data[2]);
+//					tilt_error = acosf(zb * zsp);
+//					math::Vector<3> xb(R_cur.data[0]);
+//					math::Vector<3> xsp(R_sp.data[0]);
+//					yaw_error = acosf(xb * xsp);
 
-						/* update attitude setpoint rotation matrix */
-						/* interpret roll/pitch/yaw inputs as rate demands */
-						float dRoll = 0.0f;
-						float dPitch = 0.0f;
-						float dYaw = 0.0f;
+					/* update attitude setpoint rotation matrix */
+					/* interpret roll/pitch/yaw inputs as rate demands */
+					float dRoll = 0.0f;
+					float dPitch = 0.0f;
+					float dYaw = 0.0f;
 
-						if (tilt_error < M_PI_4_F) {
-							dRoll = rollRate * _params.acro_rollRate_max * dt;
-							dPitch = pitchRate * _params.acro_pitchRate_max * dt;
-						}
+					if (tilt_error < M_PI_4_F) {
+						dRoll = rollRate * _params.acro_rollRate_max * dt;
+						dPitch = pitchRate * _params.acro_pitchRate_max * dt;
+					}
 
-						if (yaw_error < M_PI_4_F) {
-							dYaw = yawRate * _params.acro_yawRate_max * dt;
-						}
+					if (yaw_error < M_PI_4_F) {
+						dYaw = yawRate * _params.acro_yawRate_max * dt;
+					}
 
-						math::Matrix<3, 3> R_xy;
-						R_xy.from_euler(dRoll, dPitch, 0.0f);
+					math::Matrix<3, 3> R_xy;
+					R_xy.from_euler(dRoll, dPitch, 0.0f);
 
-						math::Matrix<3, 3> R_z;
-						R_z.from_euler(0.0f, 0.0f, dYaw);
+					math::Matrix<3, 3> R_z;
+					R_z.from_euler(0.0f, 0.0f, dYaw);
 
-						R_sp = R_z * R_sp;
+					R_sp = R_z * R_sp;
 
-						R_sp = R_sp * R_xy;
+					R_sp = R_sp * R_xy;
 
-						/* renormalize rows */
-						for (int row = 0; row < 3; row++) {
-							math::Vector<3> rvec(R_sp.data[row]);
-							R_sp.set_row(row, rvec.normalized());
-						}
-
+					/* renormalize rows */
+					for (int row = 0; row < 3; row++) {
+						math::Vector<3> rvec(R_sp.data[row]);
+						R_sp.set_row(row, rvec.normalized());
 					}
 
 					memcpy(&_att_sp.R_body[0], R_sp.data, sizeof(_att_sp.R_body));
