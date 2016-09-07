@@ -2053,7 +2053,7 @@ MulticopterPositionControl::task_main()
 					 */
 					control_sequencer(_ctrl_state, _att_sp, _manual, R_sp, rollRate, pitchRate, yawRate);
 
-					/* limit setpoint rate of change */
+					/* limit setpoint lead angle */
 					float tilt_error = 0.0f;
 					float yaw_error = 0.0f;
 //					math::Quaternion q_cur(_ctrl_state.q);
