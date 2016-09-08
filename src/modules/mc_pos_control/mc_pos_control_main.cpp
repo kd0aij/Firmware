@@ -2032,9 +2032,9 @@ MulticopterPositionControl::task_main()
 				/* and in ACRO mode */
 				if (_vehicle_status.nav_state == vehicle_status_s::NAVIGATION_STATE_ACRO) {
 
-					float rollRate = _manual.y;
-					float pitchRate = -_manual.x;
-					float yawRate = _manual.r;
+					float rollRate = _manual.y * _params.acro_rollRate_max;
+					float pitchRate = -_manual.x * _params.acro_pitchRate_max;
+					float yawRate = _manual.r * _params.acro_yawRate_max;
 
 					if (!_att_sp.R_valid) {
 						/* initialize to current orientation */
@@ -2051,7 +2051,7 @@ MulticopterPositionControl::task_main()
 					/* the control sequencer overrides manual inputs
 					 * by setting values for roll/pitch/yawRate and modifying R_sp as needed
 					 */
-					control_sequencer(_ctrl_state, _att_sp, _manual, R_sp, rollRate, pitchRate, yawRate);
+//					prog_sequence(_ctrl_state, _att_sp, _manual, R_sp, rollRate, pitchRate, yawRate);
 
 					/* limit setpoint lead angle */
 					float tilt_error = 0.0f;
@@ -2072,12 +2072,12 @@ MulticopterPositionControl::task_main()
 					float dYaw = 0.0f;
 
 					if (tilt_error < M_PI_4_F) {
-						dRoll = rollRate * _params.acro_rollRate_max * dt;
-						dPitch = pitchRate * _params.acro_pitchRate_max * dt;
+						dRoll = rollRate * dt;
+						dPitch = pitchRate * dt;
 					}
 
 					if (yaw_error < M_PI_4_F) {
-						dYaw = yawRate * _params.acro_yawRate_max * dt;
+						dYaw = yawRate * dt;
 					}
 
 					math::Matrix<3, 3> R_xy;
