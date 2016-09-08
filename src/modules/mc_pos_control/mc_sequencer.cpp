@@ -1,6 +1,11 @@
 #include "mc_sequencer.h"
 
-static const int N_entries = 3;
+//static struct sequence_s {
+//	const int N_entries;
+//	int index;
+//	const seq_entry_s entries[N_entries];
+//};
+const int N_entries = 3;
 static const struct seq_entry_s sequence[N_entries] {
 	{Seq_state::ATTITUDE, 0.8f, 0.0f, 0.0f, 0.0f, 0.707f, 0.0f, 0.0f, 1.0f},
 	{Seq_state::ATTITUDE, 0.8f, 0.0f, 0.0f, 0.0f, -0.707f, 0.0f, 0.0f, 1.0f},
@@ -198,33 +203,46 @@ void flip_sequence(
 
 }
 
-void entryAction(Seq_state cur_state,
-		const seq_entry_s& seq_entry, math::Quaternion& q_end,
-		float& rollRate, float& pitchRate, float& yawRate,
-		struct vehicle_attitude_setpoint_s& att_sp, math::Matrix<3, 3>& R_sp) {
-	switch (cur_state) {
-	case RATE:
-		// set rates
-		rollRate = seq_entry.rollRate;
-		pitchRate = seq_entry.pitchRate;
-		yawRate = seq_entry.yawRate;
-		att_sp.thrust = seq_entry.thrust;
-		break;
-	case ATTITUDE:
-		att_sp.thrust = seq_entry.thrust;
-		R_sp.from_euler(seq_entry.target_euler[0], seq_entry.target_euler[1],
-				seq_entry.target_euler[2]);
-		memcpy(&att_sp.R_body[0], R_sp.data, sizeof(att_sp.R_body));
-		q_end.from_euler(seq_entry.target_euler[0], seq_entry.target_euler[1],
-				seq_entry.target_euler[2]);
-		printf("R_sp: "); R_sp.print();
-		printf("q_end: "); q_end.print();
-		printf("target Euler angles: "); q_end.to_euler().print();
-		break;
-	default:
-		break;
-	}
-}
+//void entryAction(Seq_state cur_state, float cur_time,
+//		const seq_entry_s& seq_entry, math::Quaternion& q_end,
+//		float& rollRate, float& pitchRate, float& yawRate,
+//		struct vehicle_attitude_setpoint_s& att_sp, math::Matrix<3, 3>& R_sp) {
+//	switch (cur_state) {
+//	case IDLE:
+//		// initialize sequencer
+//		seq_index = 0;
+//		seq_switch = manual_control_setpoint_s::SWITCH_POS_OFF;
+//		PX4_INFO("sequence end at %6.3f, duration: %6.3f",
+//			 (double) cur_time,
+//			 (double)(cur_time - start_sequence));
+//		break;
+//	case RATE:
+//		// set rates
+//		rollRate = seq_entry.rollRate;
+//		pitchRate = seq_entry.pitchRate;
+//		yawRate = seq_entry.yawRate;
+//		att_sp.thrust = seq_entry.thrust;
+//		break;
+//	case ATTITUDE:
+//		att_sp.thrust = seq_entry.thrust;
+//		R_sp.from_euler(seq_entry.target_euler[0], seq_entry.target_euler[1],
+//				seq_entry.target_euler[2]);
+//		memcpy(&att_sp.R_body[0], R_sp.data, sizeof(att_sp.R_body));
+//		q_end.from_euler(seq_entry.target_euler[0], seq_entry.target_euler[1],
+//				seq_entry.target_euler[2]);
+//		printf("R_sp:\n"); R_sp.print();
+//		printf("q_end: "); q_end.print();
+//		printf("target Euler angles: "); q_end.to_euler().print();
+//		break;
+//	case DELAY:
+//		printf("q_err: "); q_err.print();
+//		PX4_INFO("error %6.3f", (double) error);
+//		printf("final Euler angles: "); q_cur.to_euler().print();
+//		break;
+//	default:
+//		break;
+//	}
+//}
 
 void prog_sequence(
 	struct control_state_s &ctrl_state,
@@ -235,8 +253,8 @@ void prog_sequence(
 
 	static Seq_state cur_state = IDLE;
 	static Seq_state last_state = IDLE;
-	static int seq_index = 0;
 	static seq_entry_s seq_entry;
+	static int seq_index = 0;
 
 	static math::Quaternion q_end;
 	static math::Quaternion q_cur;
@@ -246,6 +264,8 @@ void prog_sequence(
 	static float start_sequence = cur_time;
 	static float start_time = cur_time;
 
+	static uint8_t seq_switch = manual_control_setpoint_s::SWITCH_POS_OFF;
+
 	/* if seq_switch just transitioned from off to on, begin substituting sequencer
 	 * controls for manual controls. The sequencer could be a separate module publishing
 	 * manual_control_setpoint messages, or a smaller message containing only
@@ -253,8 +273,7 @@ void prog_sequence(
 	 */
 //						uint8_t seq_switch = _manual.seq_switch;
 
-	// for SITL, simulate seq_switch activation every 5 seconds
-	static uint8_t seq_switch = manual_control_setpoint_s::SWITCH_POS_OFF;
+	// for SITL, simulate seq_switch activation
 
 	if ((cur_time - start_sequence) > 10.0f) {
 		if (seq_switch == manual_control_setpoint_s::SWITCH_POS_OFF) {
@@ -266,31 +285,27 @@ void prog_sequence(
 	}
 
 	/* substitute attitude sequence for _manual_control_setpoint */
-	if (cur_state != last_state) {
-		PX4_INFO("state: %d at %6.3f", cur_state, (double) cur_time);
-		last_state = cur_state;
-	}
+//	if ((cur_time - start_time) > 5.0f) {
+//		// timeout
+//		PX4_INFO("timeout");
+//		cur_state = IDLE;
+//	}
 
+	// perform state transitions
 	switch (cur_state) {
 
 	case IDLE: {
 
 			if (seq_switch == manual_control_setpoint_s::SWITCH_POS_ON) {
 
-				// initialize sequencer
-				seq_index = 0;
 				seq_entry = sequence[seq_index];
 				cur_state = seq_entry.type;
-				entryAction(cur_state, seq_entry, q_end, rollRate, pitchRate,
-						yawRate, att_sp, R_sp);
-				start_time = cur_time;
 			}
 
 			break;
 		}
 	case RATE: {
 			// immediate transition to delay state
-			start_time = cur_time;
 			cur_state = DELAY;
 			break;
 		}
@@ -301,9 +316,8 @@ void prog_sequence(
 			math::Quaternion q_err = q_cur * q_end.conjugated();
 			float error = acosf(fabsf(q_err.data[0]));
 
-			// once attitude is reached, transition to DELAY
-			if (error < 0.005f) {
-				start_time = cur_time;
+			// once attitude is reached (or timeout), transition to DELAY
+			if (error < 0.005f || (cur_time - start_time) > 5.0f) {
 				cur_state = DELAY;
 				printf("q_err: "); q_err.print();
 				PX4_INFO("error %6.3f", (double) error);
@@ -319,22 +333,54 @@ void prog_sequence(
 				// then perform next sequence entry
 				seq_index++;
 				if (seq_index < N_entries) {
-					start_time = cur_time;
 					seq_entry = sequence[seq_index];
 					cur_state = seq_entry.type;
-					entryAction(cur_state, seq_entry, q_end, rollRate, pitchRate,
-							yawRate, att_sp, R_sp);
 				} else {
 					cur_state = IDLE;
-					seq_switch = manual_control_setpoint_s::SWITCH_POS_OFF;
-					PX4_INFO("sequence end at %6.3f, duration: %6.3f",
-						 (double) cur_time / 1e6,
-						 (double)(cur_time - start_time) / 1e6);
 				}
 			}
 			break;
 		}
 
+	}
+
+	// perform state entry actions
+	if (cur_state != last_state) {
+		start_time = cur_time;
+		switch (cur_state) {
+		case IDLE:
+			// initialize sequencer
+			seq_index = 0;
+			seq_switch = manual_control_setpoint_s::SWITCH_POS_OFF;
+			PX4_INFO("sequence end at %6.3f, duration: %6.3f",
+				 (double) cur_time,
+				 (double)(cur_time - start_sequence));
+			break;
+		case RATE:
+			// set rates
+			rollRate = seq_entry.rollRate;
+			pitchRate = seq_entry.pitchRate;
+			yawRate = seq_entry.yawRate;
+			att_sp.thrust = seq_entry.thrust;
+			break;
+		case ATTITUDE:
+			att_sp.thrust = seq_entry.thrust;
+			R_sp.from_euler(seq_entry.target_euler[0], seq_entry.target_euler[1],
+					seq_entry.target_euler[2]);
+			memcpy(&att_sp.R_body[0], R_sp.data, sizeof(att_sp.R_body));
+			q_end.from_euler(seq_entry.target_euler[0], seq_entry.target_euler[1],
+					seq_entry.target_euler[2]);
+			printf("R_sp:\n"); R_sp.print();
+			printf("q_end: "); q_end.print();
+			printf("target Euler angles: "); q_end.to_euler().print();
+			break;
+		case DELAY:
+			break;
+		default:
+			break;
+		}
+		PX4_INFO("state: %d at %6.3f, thrust: %6.3f", cur_state, (double) cur_time, (double)att_sp.thrust);
+		last_state = cur_state;
 	}
 
 }

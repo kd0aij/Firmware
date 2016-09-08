@@ -2026,6 +2026,18 @@ MulticopterPositionControl::task_main()
 
 			/* control roll and pitch directly if no aiding velocity controller is active */
 			if (!_control_mode.flag_control_velocity_enabled) {
+
+				/* control throttle directly if no climb rate controller is active */
+				if (!_control_mode.flag_control_climb_rate_enabled) {
+					float thr_val = throttle_curve(_manual.z, _params.thr_hover);
+					_att_sp.thrust = math::min(thr_val, _manual_thr_max.get());
+
+					/* enforce minimum throttle if not landed */
+					if (!_vehicle_land_detected.landed) {
+						_att_sp.thrust = math::max(_att_sp.thrust, _manual_thr_min.get());
+					}
+				}
+
 				// attitude setpoint rotation matrix
 				math::Matrix<3, 3> R_sp;
 
@@ -2051,7 +2063,7 @@ MulticopterPositionControl::task_main()
 					/* the control sequencer overrides manual inputs
 					 * by setting values for roll/pitch/yawRate and modifying R_sp as needed
 					 */
-//					prog_sequence(_ctrl_state, _att_sp, _manual, R_sp, rollRate, pitchRate, yawRate);
+					prog_sequence(_ctrl_state, _att_sp, _manual, R_sp, rollRate, pitchRate, yawRate);
 
 					/* limit setpoint lead angle */
 					float tilt_error = 0.0f;
@@ -2096,11 +2108,14 @@ MulticopterPositionControl::task_main()
 						R_sp.set_row(row, rvec.normalized());
 					}
 
-					memcpy(&_att_sp.R_body[0], R_sp.data, sizeof(_att_sp.R_body));
-					math::Vector<3> eulerAngles = R_sp.to_euler();
-					_att_sp.roll_body = eulerAngles.data[0];
-					_att_sp.pitch_body = eulerAngles.data[1];
-					_att_sp.yaw_body = eulerAngles.data[2];
+					// this block is not necessary for attitude control
+					{
+						memcpy(&_att_sp.R_body[0], R_sp.data, sizeof(_att_sp.R_body));
+						math::Vector<3> eulerAngles = R_sp.to_euler();
+						_att_sp.roll_body = eulerAngles.data[0];
+						_att_sp.pitch_body = eulerAngles.data[1];
+						_att_sp.yaw_body = eulerAngles.data[2];
+					}
 
 				} else if (_params.opt_recover <= 0) {
 					/* not in ACRO mode and optimal recovery is not in use */
@@ -2148,18 +2163,6 @@ MulticopterPositionControl::task_main()
 				q_sp.from_dcm(R_sp);
 				memcpy(&_att_sp.q_d[0], &q_sp.data[0], sizeof(_att_sp.q_d));
 			}
-
-			/* control throttle directly if no climb rate controller is active */
-			if (!_control_mode.flag_control_climb_rate_enabled) {
-				float thr_val = throttle_curve(_manual.z, _params.thr_hover);
-				_att_sp.thrust = math::min(thr_val, _manual_thr_max.get());
-
-				/* enforce minimum throttle if not landed */
-				if (!_vehicle_land_detected.landed) {
-					_att_sp.thrust = math::max(_att_sp.thrust, _manual_thr_min.get());
-				}
-			}
-
 
 			_att_sp.timestamp = hrt_absolute_time();
 
