@@ -1,16 +1,47 @@
 #include "mc_sequencer.h"
 
-//static struct sequence_s {
-//	const int N_entries;
-//	int index;
-//	const seq_entry_s entries[N_entries];
+// TODO: make sure this gets stored in codespace ROM to avoid using RAM
+struct sequence {
+	const int N_entries;
+	const struct seq_entry_s *entries;
+};
+//const int N_entries = 3;
+//static const struct seq_entry_s sequence[N_entries] {
+//	{Seq_state::ATTITUDE, 0.6f, 0.0f, 0.0f, 0.0f, 0.707f, 0.0f, 0.0f, 1.0f},
+//	{Seq_state::ATTITUDE, 0.6f, 0.0f, 0.0f, 0.0f, -0.707f, 0.0f, 0.0f, 1.0f},
+//	{Seq_state::ATTITUDE, 0.5f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f}
 //};
-const int N_entries = 3;
-static const struct seq_entry_s sequence[N_entries] {
+static const struct seq_entry_s tilt_lr[3] {
 	{Seq_state::ATTITUDE, 0.6f, 0.0f, 0.0f, 0.0f, 0.707f, 0.0f, 0.0f, 1.0f},
 	{Seq_state::ATTITUDE, 0.6f, 0.0f, 0.0f, 0.0f, -0.707f, 0.0f, 0.0f, 1.0f},
 	{Seq_state::ATTITUDE, 0.5f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f}
 };
+static const struct seq_entry_s pitch_flip[] {
+	{Seq_state::ATTITUDE, 0.8f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.5f},
+	{Seq_state::RATE, 0.2f, 0.0f, M_TWOPI_F, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f},
+	//TODO this delay shouldn't be necessary, but without it the next ATTITUDE command doesn't work
+	{Seq_state::DELAY, 0.8f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f},
+	{Seq_state::ATTITUDE, 0.8f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.25f},
+	{Seq_state::ATTITUDE, 0.5f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f}
+};
+static const struct seq_entry_s roll_flip[] {
+	{Seq_state::ATTITUDE, 0.8f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.5f},
+	{Seq_state::RATE, 0.2f, M_TWOPI_F, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f},
+	//TODO this delay shouldn't be necessary, but without it the next ATTITUDE command doesn't work
+	{Seq_state::DELAY, 0.8f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f},
+	{Seq_state::ATTITUDE, 0.8f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.25f},
+	{Seq_state::ATTITUDE, 0.5f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f}
+};
+static const struct sequence roll_seq {
+	sizeof(tilt_lr)/sizeof(seq_entry_s), tilt_lr
+};
+static const struct sequence pitch_flip_seq {
+	sizeof(pitch_flip)/sizeof(seq_entry_s), pitch_flip
+};
+static const struct sequence roll_flip_seq {
+	sizeof(pitch_flip)/sizeof(seq_entry_s), roll_flip
+};
+static const struct sequence *cur_sequence = &roll_flip_seq;
 
 /*
  * Perform a 360 degree roll or pitch flip starting and ending at current attitude
@@ -278,7 +309,7 @@ void prog_sequence(
 	if ((cur_time - start_sequence) > 10.0f) {
 		if (seq_switch == manual_control_setpoint_s::SWITCH_POS_OFF) {
 			seq_switch = manual_control_setpoint_s::SWITCH_POS_ON;
-			PX4_INFO("seq_switch on: at %f", (double) cur_time / 1e6);
+			PX4_INFO("seq_switch on: at %f", (double) cur_time);
 		}
 
 		start_sequence = cur_time;
@@ -292,7 +323,9 @@ void prog_sequence(
 
 			if (seq_switch == manual_control_setpoint_s::SWITCH_POS_ON) {
 
-				seq_entry = sequence[seq_index];
+				PX4_INFO("cur_sequence->N_entries: %d", cur_sequence->N_entries);
+				seq_entry = cur_sequence->entries[seq_index];
+				PX4_INFO("seq_entry.thrust: %6.3f", (double)seq_entry.thrust);
 				cur_state = seq_entry.type;
 			}
 
@@ -300,7 +333,6 @@ void prog_sequence(
 		}
 	case RATE: {
 			// immediate transition to delay state
-			att_sp.thrust = seq_entry.thrust;	// this does not persist across calls
 			cur_state = DELAY;
 			break;
 		}
@@ -325,14 +357,18 @@ void prog_sequence(
 		}
 
 	case DELAY: {
-			// delay
+			// set rates
 			att_sp.thrust = seq_entry.thrust;	// this does not persist across calls
+			rollRate = seq_entry.rollRate;
+			pitchRate = seq_entry.pitchRate;
+			yawRate = seq_entry.yawRate;
 
+			// delay
 			if (cur_time >= (start_time + seq_entry.delay)) {
 				// then perform next sequence entry
 				seq_index++;
-				if (seq_index < N_entries) {
-					seq_entry = sequence[seq_index];
+				if (seq_index < cur_sequence->N_entries) {
+					seq_entry = cur_sequence->entries[seq_index];
 					cur_state = seq_entry.type;
 				} else {
 					cur_state = IDLE;
@@ -372,6 +408,7 @@ void prog_sequence(
 			printf("target Euler angles: "); q_end.to_euler().print();
 			break;
 		case DELAY:
+			PX4_INFO("DELAY duration: %6.3f", (double)seq_entry.delay);
 			break;
 		default:
 			break;
