@@ -2041,7 +2041,7 @@ MulticopterPositionControl::task_main()
 				// attitude setpoint rotation matrix
 				math::Matrix<3, 3> R_sp;
 
-				/* and in ACRO mode */
+				/* If ACRO attitude control mode */
 				if (_vehicle_status.nav_state == vehicle_status_s::NAVIGATION_STATE_ACRO) {
 
 					float rollRate = _manual.y * _params.acro_rollRate_max;

@@ -7,9 +7,9 @@
 //};
 const int N_entries = 3;
 static const struct seq_entry_s sequence[N_entries] {
-	{Seq_state::ATTITUDE, 0.8f, 0.0f, 0.0f, 0.0f, 0.707f, 0.0f, 0.0f, 1.0f},
-	{Seq_state::ATTITUDE, 0.8f, 0.0f, 0.0f, 0.0f, -0.707f, 0.0f, 0.0f, 1.0f},
-	{Seq_state::ATTITUDE, 0.7f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f}
+	{Seq_state::ATTITUDE, 0.6f, 0.0f, 0.0f, 0.0f, 0.707f, 0.0f, 0.0f, 1.0f},
+	{Seq_state::ATTITUDE, 0.6f, 0.0f, 0.0f, 0.0f, -0.707f, 0.0f, 0.0f, 1.0f},
+	{Seq_state::ATTITUDE, 0.5f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f}
 };
 
 /*
@@ -285,12 +285,6 @@ void prog_sequence(
 	}
 
 	/* substitute attitude sequence for _manual_control_setpoint */
-//	if ((cur_time - start_time) > 5.0f) {
-//		// timeout
-//		PX4_INFO("timeout");
-//		cur_state = IDLE;
-//	}
-
 	// perform state transitions
 	switch (cur_state) {
 
@@ -306,12 +300,15 @@ void prog_sequence(
 		}
 	case RATE: {
 			// immediate transition to delay state
+			att_sp.thrust = seq_entry.thrust;	// this does not persist across calls
 			cur_state = DELAY;
 			break;
 		}
 
 	case ATTITUDE: {
 			// wait for target attitude
+			att_sp.thrust = seq_entry.thrust;	// this does not persist across calls
+
 			q_cur.set(ctrl_state.q);
 			math::Quaternion q_err = q_cur * q_end.conjugated();
 			float error = acosf(fabsf(q_err.data[0]));
@@ -329,6 +326,8 @@ void prog_sequence(
 
 	case DELAY: {
 			// delay
+			att_sp.thrust = seq_entry.thrust;	// this does not persist across calls
+
 			if (cur_time >= (start_time + seq_entry.delay)) {
 				// then perform next sequence entry
 				seq_index++;
@@ -361,10 +360,8 @@ void prog_sequence(
 			rollRate = seq_entry.rollRate;
 			pitchRate = seq_entry.pitchRate;
 			yawRate = seq_entry.yawRate;
-			att_sp.thrust = seq_entry.thrust;
 			break;
 		case ATTITUDE:
-			att_sp.thrust = seq_entry.thrust;
 			R_sp.from_euler(seq_entry.target_euler[0], seq_entry.target_euler[1],
 					seq_entry.target_euler[2]);
 			memcpy(&att_sp.R_body[0], R_sp.data, sizeof(att_sp.R_body));
