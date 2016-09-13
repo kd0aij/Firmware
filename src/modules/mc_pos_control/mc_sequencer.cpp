@@ -319,12 +319,13 @@ void prog_sequence(
 
 			// only the rising edge of seq_switch triggers a sequence
 			if (seq_switch == manual_control_setpoint_s::SWITCH_POS_ON &&
-					seq_switch != seq_switch_last) {
+			    seq_switch != seq_switch_last) {
 
 				seq_index = -1;
 				start_sequence = cur_time;
 				cur_state = NEXT_ENTRY;
 			}
+
 			seq_switch_last = seq_switch;
 
 			break;
@@ -389,6 +390,7 @@ void prog_sequence(
 		} else {
 			cur_state = IDLE;
 		}
+
 		break;
 	}
 
