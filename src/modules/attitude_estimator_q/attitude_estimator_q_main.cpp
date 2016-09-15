@@ -691,9 +691,11 @@ bool AttitudeEstimatorQ::update(float dt)
 		float mag_err = _wrap_pi(atan2f(mag_earth(1), mag_earth(0)) - _mag_decl);
 		float gainMult = 1.0f;
 		const float fifty_dps = 0.873f;
+
 		if (spinRate > fifty_dps) {
 			gainMult = fmin(spinRate / fifty_dps, 10.0f);
 		}
+
 		// Project magnetometer correction to body frame
 		corr += _q.conjugate_inversed(Vector<3>(0.0f, 0.0f, -mag_err)) * _w_mag * gainMult;
 	}
