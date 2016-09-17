@@ -206,6 +206,10 @@ void flip_sequence(
 #else
 
 // TODO: make sure this gets stored in codespace ROM to avoid wasting RAM
+//static const struct seq_entry_s hover[] {
+//	{Seq_state::ATTITUDE, 0.5f, 0.0f, 0.0f, 0.0f, {0.0f, 0.0f, 0.0f}, 0.0f}
+//};
+
 static const struct seq_entry_s coord_turn[] {
 	{Seq_state::ATTITUDE, 0.8f, 0.0f, 0.0f, 0.0f, {0.5f, -0.25f, 0.0f}, 0.0f},
 	{Seq_state::RATE, 0.8f, 0.0f, 0.0f, 0.9f, { -0.707f, 0.0f, 0.0f}, 30.0f},
@@ -300,6 +304,14 @@ void prog_sequence(
 	 * controls for manual controls.
 	 */
 	uint8_t seq_switch = manual.seq_switch;
+
+	// force IDLE if switch transitions to off during a sequence
+	if (seq_switch == manual_control_setpoint_s::SWITCH_POS_OFF &&
+	    seq_switch != seq_switch_last) {
+
+		cur_state = IDLE;
+	}
+
 
 	// for SITL, simulate seq_switch activation
 
