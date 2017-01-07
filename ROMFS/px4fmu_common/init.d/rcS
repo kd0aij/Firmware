@@ -799,7 +799,7 @@ then
 				set LOGGER_ARGS "-f"
 			fi
 
-			if logger start -r 1000 -b 20 -t ${LOGGER_ARGS}
+			if logger start -r 0 -b 20 -t ${LOGGER_ARGS}
 			then
 			fi
 			unset LOGGER_ARGS
