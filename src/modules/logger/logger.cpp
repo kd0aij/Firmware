@@ -518,51 +518,53 @@ void Logger::add_default_topics()
 #endif
 
 	// Note: try to avoid setting the interval where possible, as it increases RAM usage
+	add_topic("sensor_accel");
+	add_topic("sensor_gyro");
 
-	add_topic("vehicle_attitude", 10);
-	add_topic("actuator_outputs", 50);
-	add_topic("telemetry_status");
-	add_topic("vehicle_command");
+//	add_topic("vehicle_attitude", 10);
+//	add_topic("actuator_outputs", 50);
+//	add_topic("telemetry_status");
+//	add_topic("vehicle_command");
 	add_topic("vehicle_status");
-	add_topic("vtol_vehicle_status", 100);
-	add_topic("commander_state", 100);
-	add_topic("satellite_info");
-	add_topic("vehicle_attitude_setpoint", 20);
-	add_topic("vehicle_rates_setpoint", 10);
-	add_topic("actuator_controls", 20);
-	add_topic("actuator_controls_0", 20);
-	add_topic("actuator_controls_1", 20);
-	add_topic("vehicle_local_position", 100);
-	add_topic("vehicle_local_position_setpoint", 50);
-	add_topic("vehicle_global_position", 100);
-	add_topic("vehicle_global_velocity_setpoint", 100);
-	add_topic("battery_status", 300);
-	add_topic("system_power", 300);
-	add_topic("position_setpoint_triplet", 10);
-	add_topic("att_pos_mocap", 50);
-	add_topic("vision_position_estimate", 50);
-	add_topic("optical_flow", 50);
-	add_topic("rc_channels");
-	add_topic("input_rc");
-	add_topic("airspeed", 50);
-	add_topic("differential_pressure", 50);
-	add_topic("distance_sensor", 20);
-	add_topic("esc_status", 20);
-	add_topic("estimator_status", 50); //this one is large
-	add_topic("ekf2_innovations", 20);
-	add_topic("tecs_status", 20);
-	add_topic("wind_estimate", 100);
-	add_topic("control_state", 20);
-	add_topic("camera_trigger");
+//	add_topic("vtol_vehicle_status", 100);
+//	add_topic("commander_state", 100);
+//	add_topic("satellite_info");
+//	add_topic("vehicle_attitude_setpoint", 20);
+	add_topic("vehicle_rates_setpoint");
+//	add_topic("actuator_controls", 20);
+//	add_topic("actuator_controls_0", 20);
+//	add_topic("actuator_controls_1", 20);
+//	add_topic("vehicle_local_position", 100);
+//	add_topic("vehicle_local_position_setpoint", 50);
+//	add_topic("vehicle_global_position", 100);
+//	add_topic("vehicle_global_velocity_setpoint", 100);
+//	add_topic("battery_status", 300);
+//	add_topic("system_power", 300);
+//	add_topic("position_setpoint_triplet", 10);
+//	add_topic("att_pos_mocap", 50);
+//	add_topic("vision_position_estimate", 50);
+//	add_topic("optical_flow", 50);
+//	add_topic("rc_channels");
+//	add_topic("input_rc");
+//	add_topic("airspeed", 50);
+//	add_topic("differential_pressure", 50);
+//	add_topic("distance_sensor", 20);
+//	add_topic("esc_status", 20);
+//	add_topic("estimator_status", 50); //this one is large
+//	add_topic("ekf2_innovations", 20);
+//	add_topic("tecs_status", 20);
+//	add_topic("wind_estimate", 100);
+//	add_topic("control_state", 20);
+//	add_topic("camera_trigger");
 	add_topic("cpuload");
-	add_topic("gps_dump"); //this will only be published if GPS_DUMP_COMM is set
-	add_topic("sensor_preflight");
-	add_topic("low_stack");
-
-	/* for estimator replay (need to be at full rate) */
-	add_topic("sensor_combined");
-	add_topic("vehicle_gps_position");
-	add_topic("vehicle_land_detected");
+//	add_topic("gps_dump"); //this will only be published if GPS_DUMP_COMM is set
+//	add_topic("sensor_preflight");
+//	add_topic("low_stack");
+//
+//	/* for estimator replay (need to be at full rate) */
+//	add_topic("sensor_combined");
+//	add_topic("vehicle_gps_position");
+//	add_topic("vehicle_land_detected");
 }
 
 int Logger::add_topics_from_file(const char *fname)
@@ -665,7 +667,7 @@ void Logger::run()
 	int log_message_sub = orb_subscribe(ORB_ID(log_message));
 	orb_set_interval(log_message_sub, 20);
 
-	int ntopics = add_topics_from_file(PX4_ROOTFSDIR "/fs/microsd/etc/logging/logger_topics.txt");
+	int ntopics = 0; //add_topics_from_file(PX4_ROOTFSDIR "/fs/microsd/etc/logging/logger_topics.txt");
 
 	if (ntopics > 0) {
 		PX4_INFO("logging %d topics from logger_topics.txt", ntopics);
@@ -834,7 +836,7 @@ void Logger::run()
 				/* if this topic has been updated, copy the new data into the message buffer
 				 * and write a message to the log
 				 */
-				for (uint8_t instance = 0; instance < ORB_MULTI_MAX_INSTANCES; instance++) {
+				for (uint8_t instance = 0; instance < 1 /* ORB_MULTI_MAX_INSTANCES */; instance++) {
 					if (copy_if_updated_multi(sub, instance, _msg_buffer + sizeof(ulog_message_data_header_s),
 								  sub_idx == next_subscribe_topic_index)) {
 
