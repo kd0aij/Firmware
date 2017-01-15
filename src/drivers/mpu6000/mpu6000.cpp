@@ -215,6 +215,12 @@ private:
 	Integrator		_accel_int;
 	Integrator		_gyro_int;
 
+	int16_t _int_count;
+	static const int intbuf_len = 5;
+	float	_ax_in[intbuf_len];
+	float	_ay_in[intbuf_len];
+	float	_az_in[intbuf_len];
+
 	enum Rotation		_rotation;
 
 	// this is used to support runtime checking of key
@@ -513,6 +519,7 @@ MPU6000::MPU6000(device::Device *interface, const char *path_accel, const char *
 	_gyro_filter_z(MPU6000_GYRO_DEFAULT_RATE, MPU6000_GYRO_DEFAULT_DRIVER_FILTER_FREQ),
 	_accel_int(1000000 / MPU6000_ACCEL_MAX_OUTPUT_RATE),
 	_gyro_int(1000000 / MPU6000_GYRO_MAX_OUTPUT_RATE, true),
+	_int_count(0),
 	_rotation(rotation),
 	_checked_next(0),
 	_in_factory_test(false),
@@ -2009,6 +2016,13 @@ MPU6000::measure()
 	arb.y = _accel_filter_y.apply(y_in_new);
 	arb.z = _accel_filter_z.apply(z_in_new);
 
+	if (_int_count < intbuf_len) {
+		_ax_in[_int_count] = x_in_new;
+		_ay_in[_int_count] = y_in_new;
+		_az_in[_int_count] = z_in_new;
+	}
+	_int_count++;
+
 	math::Vector<3> aval(x_in_new, y_in_new, z_in_new);
 	math::Vector<3> aval_integrated;
 
@@ -2068,6 +2082,13 @@ MPU6000::measure()
 
 	/* notify anyone waiting for data */
 	if (accel_notify) {
+		arb.int_count = _int_count;
+		for (int i=0; i<_int_count; i++) {
+			arb.x_in[i] = _ax_in[i];
+			arb.y_in[i] = _ay_in[i];
+			arb.z_in[i] = _az_in[i];
+		}
+		_int_count = 0;
 		poll_notify(POLLIN);
 	}
 
