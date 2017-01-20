@@ -15,4 +15,10 @@ int16 y_raw
 int16 z_raw
 int16 temperature_raw
 
+int16 int_count		# number of samples integrated
+
+float32[5] x_in		# input to integrator
+float32[5] y_in		# input to integrator
+float32[5] z_in		# input to integrator
+
 uint32 device_id

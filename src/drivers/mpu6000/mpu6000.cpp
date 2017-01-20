@@ -220,6 +220,9 @@ private:
 	float	_ax_in[intbuf_len];
 	float	_ay_in[intbuf_len];
 	float	_az_in[intbuf_len];
+	float	_gx_in[intbuf_len];
+	float	_gy_in[intbuf_len];
+	float	_gz_in[intbuf_len];
 
 	enum Rotation		_rotation;
 
@@ -2016,13 +2019,6 @@ MPU6000::measure()
 	arb.y = _accel_filter_y.apply(y_in_new);
 	arb.z = _accel_filter_z.apply(z_in_new);
 
-	if (_int_count < intbuf_len) {
-		_ax_in[_int_count] = x_in_new;
-		_ay_in[_int_count] = y_in_new;
-		_az_in[_int_count] = z_in_new;
-	}
-	_int_count++;
-
 	math::Vector<3> aval(x_in_new, y_in_new, z_in_new);
 	math::Vector<3> aval_integrated;
 
@@ -2066,10 +2062,21 @@ MPU6000::measure()
 	math::Vector<3> gval(x_gyro_in_new, y_gyro_in_new, z_gyro_in_new);
 	math::Vector<3> gval_integrated;
 
-	bool gyro_notify = _gyro_int.put(arb.timestamp, gval, gval_integrated, grb.integral_dt);
+//	bool gyro_notify =
+			_gyro_int.put(arb.timestamp, gval, gval_integrated, grb.integral_dt);
 	grb.x_integral = gval_integrated(0);
 	grb.y_integral = gval_integrated(1);
 	grb.z_integral = gval_integrated(2);
+
+	if (_int_count < intbuf_len) {
+		_ax_in[_int_count] = x_in_new;
+		_ay_in[_int_count] = y_in_new;
+		_az_in[_int_count] = z_in_new;
+		_gx_in[_int_count] = x_gyro_in_new;
+		_gy_in[_int_count] = y_gyro_in_new;
+		_gz_in[_int_count] = z_gyro_in_new;
+	}
+	_int_count++;
 
 	grb.scaling = _gyro_range_scale;
 	grb.range_rad_s = _gyro_range_rad_s;
@@ -2082,17 +2089,28 @@ MPU6000::measure()
 
 	/* notify anyone waiting for data */
 	if (accel_notify) {
+		/* TODO This assumes that accel and gyro are reported at the same rate.
+		 * Although some parts of this code imply that the two rates may be different,
+     * this method returns with no action if the accel data hasn't changed.
+     * That appears to be an error in design.
+     */
 		arb.int_count = _int_count;
-		for (int i=0; i<_int_count; i++) {
+		grb.int_count = _int_count;
+
+		for (int i = 0; i < _int_count; i++) {
 			arb.x_in[i] = _ax_in[i];
 			arb.y_in[i] = _ay_in[i];
 			arb.z_in[i] = _az_in[i];
+			grb.x_in[i] = _gx_in[i];
+			grb.y_in[i] = _gy_in[i];
+			grb.z_in[i] = _gz_in[i];
 		}
+
 		_int_count = 0;
 		poll_notify(POLLIN);
-	}
-
-	if (gyro_notify) {
+//	}
+//
+//	if (gyro_notify) {
 		_gyro->parent_poll_notify();
 	}
 
@@ -2101,9 +2119,9 @@ MPU6000::measure()
 		perf_begin(_controller_latency_perf);
 		/* publish it */
 		orb_publish(ORB_ID(sensor_accel), _accel_topic, &arb);
-	}
-
-	if (gyro_notify && !(_pub_blocked)) {
+//	}
+//
+//	if (gyro_notify && !(_pub_blocked)) {
 		/* publish it */
 		orb_publish(ORB_ID(sensor_gyro), _gyro->_gyro_topic, &grb);
 	}
