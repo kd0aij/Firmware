@@ -1241,7 +1241,6 @@ PX4FMU::cycle()
 			perf_end(_ctl_latency);
 		}
 	}
-//	} // poll_fds
 
 	_cycle_timestamp = hrt_absolute_time();
 
