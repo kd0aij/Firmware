@@ -69,6 +69,7 @@ typedef struct io_timers_t {
 	uint32_t	clock_register;
 	uint32_t	clock_bit;
 	uint32_t	clock_freq;
+	uint32_t	timer_freq;
 	uint32_t	vectorno;
 	uint32_t    first_channel_index;
 	uint32_t    last_channel_index;

@@ -150,11 +150,11 @@ static void led_pwm_timer_init_timer(unsigned timer)
 	 * Otherwize, other frequencies are attainable by adjusting .clock_freq accordingly.
 	 */
 
-	rPSC(timer) = (led_pwm_timers[timer].clock_freq / 1000000) - 1;
+	rPSC(timer) = (led_pwm_timers[timer].clock_freq / io_timers[timer].timer_freq)) - 1;
 
 	/* configure the timer to update at the desired rate */
 
-	rARR(timer) = 1000000 / LED_PWM_RATE;
+	rARR(timer) = io_timers[timer].timer_freq / LED_PWM_RATE;
 
 	/* generate an update event; reloads the counter and all registers */
 	rEGR(timer) = GTIM_EGR_UG;

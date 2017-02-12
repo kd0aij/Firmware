@@ -376,7 +376,7 @@ static int timer_set_rate(unsigned timer, unsigned rate)
 {
 
 	/* configure the timer to update at the desired rate */
-	rARR(timer) = 1000000 / rate;
+	rARR(timer) = io_timers[timer].timer_freq / rate;
 
 	/* generate an update event; reloads the counter and all registers */
 	rEGR(timer) = GTIM_EGR_UG;
@@ -425,10 +425,10 @@ int io_timer_init_timer(unsigned timer)
 
 		/* If the timer clock source provided as clock_freq is the STM32_APBx_TIMx_CLKIN
 		 * then configure the timer to free-run at 1MHz.
-		 * Otherwize, other frequencies are attainable by adjusting .clock_freq accordingly.
+		 * Otherwise, other frequencies are attainable by adjusting .clock_freq accordingly.
 		 */
 
-		rPSC(timer) = (io_timers[timer].clock_freq / 1000000) - 1;
+		rPSC(timer) = (io_timers[timer].clock_freq / io_timers[timer].timer_freq) - 1;
 
 		/*
 		 * Note we do the Standard PWM Out init here
@@ -514,7 +514,7 @@ int io_timer_channel_init(unsigned channel, io_timer_channel_mode_t mode,
 
 	if (rv >= 0) {
 
-		/* Blindly try to initialize the time - it will only do it once */
+		/* Blindly try to initialize the timer - it will only do it once */
 
 		io_timer_init_timer(channels_timer(channel));
 
