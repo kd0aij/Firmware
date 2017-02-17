@@ -235,6 +235,7 @@ int
 user_start(int argc, char *argv[])
 {
 	/* configure the first 8 PWM outputs (i.e. all of them) */
+	//TODO: this needs to be based on a parameter; in oneshot mode, PWM_MIN/MAX remain at 1000/2000 for OneShot125
 	up_pwm_set_oneshot_mode(true);
 	up_pwm_servo_init(0xff);
 

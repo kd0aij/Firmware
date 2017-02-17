@@ -965,6 +965,7 @@ void
 PX4FMU::update_pwm_out_state(bool on)
 {
 	if (on && !_pwm_initialized && _pwm_mask != 0) {
+		//TODO: this needs to be based on a parameter; in oneshot mode, PWM_MIN/MAX remain at 1000/2000 for OneShot125
 		up_pwm_set_oneshot_mode(true);
 		up_pwm_servo_init(_pwm_mask);
 		set_pwm_rate(_pwm_alt_rate_channels, _pwm_default_rate, _pwm_alt_rate);
