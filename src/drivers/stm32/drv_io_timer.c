@@ -388,7 +388,7 @@ static int timer_set_rate(unsigned timer, unsigned rate)
 	return 0;
 }
 
-#define FAKE_ONESHOT
+//#define FAKE_ONESHOT
 void io_timer_set_oneshot_mode(unsigned timer)
 {
 	timer_freq[timer] = 8;
@@ -406,9 +406,7 @@ void io_timer_set_oneshot_mode(unsigned timer)
 
 extern void io_timer_force_update(unsigned timer)
 {
-#ifdef FAKE_ONESHOT
-	// let's not and say we did
-#else
+#ifndef FAKE_ONESHOT
 	// force update of channel compare register
 	rEGR(timer) |= GTIM_EGR_UG;
 #endif
@@ -452,8 +450,11 @@ int io_timer_init_timer(unsigned timer)
 			rBDTR(timer) = ATIM_BDTR_MOE;
 		}
 
-		/* If in oneshot mode, configure the prescaler for 8MHz output.
+		/* If in oneshot mode, configure the prescaler for 8MHz output,
 		 * else set prescaler for 1MHz.
+		 *** Note that if any channel in a given timer is set to oneshot mode,
+		 *** timer_freq for that timer (group) will be set to 8MHz, and all channels
+		 *** in the group are affected.
 		 */
 
 		if (timer_freq[timer] == 8) {
@@ -464,14 +465,14 @@ int io_timer_init_timer(unsigned timer)
 
 		} else {
 			rPSC(timer) = (io_timers[timer].clock_freq / 1000000) - 1;
+			/*
+			 * Note we do the Standard PWM Out init here
+			 * default to updating at 50Hz
+			 */
+
+			timer_set_rate(timer, 50);
+
 		}
-
-		/*
-		 * Note we do the Standard PWM Out init here
-		 * default to updating at 50Hz
-		 */
-
-		timer_set_rate(timer, 50);
 
 		/*
 		 * Note that the timer is left disabled with IRQ subs installed
@@ -556,9 +557,13 @@ int io_timer_channel_init(unsigned channel, io_timer_channel_mode_t mode,
 
 	if (rv >= 0) {
 
-		/* Blindly try to initialize the timer - it will only do it once */
+		/* Try to initialize the timer - it will only do it once */
 
-		io_timer_init_timer(channels_timer(channel));
+		int tstatus = io_timer_init_timer(channels_timer(channel));
+		// bad configuration if the timer has already been initialized to 1MHz
+		if (tstatus != 0) {
+			ASSERT(timer_freq[timer_io_channels[channel].timer_index] == 8);
+		}
 
 		irqstate_t flags = px4_enter_critical_section();
 
