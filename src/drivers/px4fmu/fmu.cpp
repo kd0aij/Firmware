@@ -184,6 +184,7 @@ private:
 	static const unsigned _max_actuators = DIRECT_PWM_OUTPUT_CHANNELS;
 
 	Mode		_mode;
+	bool		_oneshot_mode;
 	unsigned	_pwm_default_rate;
 	unsigned	_pwm_alt_rate;
 	uint32_t	_pwm_alt_rate_channels;
@@ -322,6 +323,7 @@ PX4FMU	*g_fmu;
 PX4FMU::PX4FMU() :
 	CDev("fmu", PX4FMU_DEVICE_PATH),
 	_mode(MODE_NONE),
+	_oneshot_mode(false),
 	_pwm_default_rate(50),
 	_pwm_alt_rate(50),
 	_pwm_alt_rate_channels(0),
@@ -1005,6 +1007,10 @@ PX4FMU::task_main()
 			_armed_sub = orb_subscribe(ORB_ID(actuator_armed));
 			_param_sub = orb_subscribe(ORB_ID(parameter_update));
 			_adc_sub = orb_subscribe(ORB_ID(adc_report));
+
+			/* set oneshot pwm mode flag */
+			param_t param_h = param_find("PWM_AUX_1S125");
+			param_get(param_h, &_oneshot_mode);
 
 			/* initialize PWM limit lib */
 			pwm_limit_init(&_pwm_limit);

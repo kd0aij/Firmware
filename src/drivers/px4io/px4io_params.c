@@ -43,6 +43,17 @@
 #include <systemlib/param/param.h>
 
 /**
+ * Use OneShot125 mode for main PWM output channels
+ *
+ * Set to 1 for oneshot mode, 0 for normal mode.
+ *
+ * @reboot_required true
+ * @boolean
+ * @group PWM Outputs
+ */
+PARAM_DEFINE_INT32(PWM_MAIN_1S125, 0);
+
+/**
  * Invert direction of main output channel 1
  *
  * Set to 1 to invert the channel, 0 for default direction.

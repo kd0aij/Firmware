@@ -32,6 +32,17 @@
  ****************************************************************************/
 
 /**
+ * Use OneShot125 mode for aux PWM output channels
+ *
+ * Set to 1 for oneshot mode, 0 for normal mode.
+ *
+ * @reboot_required true
+ * @boolean
+ * @group PWM Outputs
+ */
+PARAM_DEFINE_INT32(PWM_AUX_1S125, 0);
+
+/**
  * Invert direction of aux output channel 1
  *
  * Set to 1 to invert the channel, 0 for default direction.
